@@ -402,6 +402,7 @@ export default function Home() {
     // 턴을 넘기면 섬광 상태 해제
     if (player.status === 'flash') {
       player.status = null;
+      player.flashDuration = 0;
       newState.logs.push(`✨ ${player.nickname}님의 섬광 상태가 해제되었습니다.`);
     }
     nextTurn(newState); 
@@ -464,7 +465,10 @@ export default function Home() {
       // 다음 플레이어가 감전 상태면 자동으로 턴을 넘김
       if (nextPlayer.status === 'shock') {
         state.logs.push(`⚡ ${nextPlayer.nickname}님은 감전되어 움직일 수 없습니다! (남은 턴: ${nextPlayer.shockDuration})`);
-        return nextTurn(state); 
+        // 무한 루프 방지: 한 번 호출할 때 최대 한 바퀴만 돌도록 제한
+        if (s < state.players.length) {
+          return nextTurn(state); 
+        }
       }
     }
     return state;
@@ -552,15 +556,15 @@ export default function Home() {
   const isDarkCloudSelected = selectedCards.some(c => c?.isAOE);
 
   return (
-    <div className="main-app" style={{ position: 'relative' }}>
+    <div className="main-app" style={{ position: 'relative', width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       {/* 상단 연결 상태 표시기 */}
-      <div style={{ position: 'fixed', top: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', zIndex: 1000, background: 'rgba(255,255,255,0.8)', padding: '5px 10px', borderRadius: '20px', border: '1px solid #e5e7eb' }}>
+      <div style={{ position: 'fixed', top: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', zIndex: 1000, background: 'rgba(255,255,255,0.9)', padding: '5px 12px', borderRadius: '20px', border: '1px solid #e5e7eb', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: myPeerId ? '#10b981' : '#ef4444' }}></div>
-        <span>{myPeerId ? '통신 서버 연결됨' : '연결 중...'}</span>
-        {!myPeerId && <button onClick={initPeer} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto' }}>재시도</button>}
+        <span style={{ color: '#374151', fontWeight: '500' }}>{myPeerId ? '통신 서버 연결됨' : '연결 중...'}</span>
+        {!myPeerId && <button onClick={initPeer} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}>재시도</button>}
       </div>
 
-    <div className={screen === 'game' ? 'game-container' : 'card'}>
+      <div className={screen === 'game' ? 'game-container' : 'card'}>
       {screen === 'home' && (
         <div>
           <h1>MULTY-CARD</h1>
