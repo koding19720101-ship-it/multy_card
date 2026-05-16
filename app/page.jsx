@@ -246,7 +246,7 @@ export default function Home() {
 
       {screen === 'home' && (
         <div style={{ padding: '3rem 1rem' }}>
-          <h1 style={{ fontSize: '2.5rem', letterSpacing: '-0.05em' }}>⚡ P2P CARD BATTLE</h1>
+          <h1 style={{ fontSize: '2.5rem', letterSpacing: '-0.05em' }}>MULTY-CARD</h1>
           <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>친구와 실시간으로 대결하세요</p>
           <div style={{ maxWidth: '320px', margin: '0 auto' }}>
             <input type="text" placeholder="사용할 닉네임" value={nickname} onChange={e => setNickname(e.target.value)} />
@@ -262,7 +262,7 @@ export default function Home() {
 
       {screen === 'lobby' && (
         <div style={{ padding: '2rem' }}>
-          <h1>대기실</h1>
+          <h1>MULTY-CARD 대기실</h1>
           <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>내 코드: <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{myPeerId}</span></p>
           <ul>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
           {amIHost ? <button onClick={handleStartGame} style={{ marginTop: '1rem' }}>게임 시작</button> : <p style={{ marginTop: '1rem' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
@@ -277,7 +277,7 @@ export default function Home() {
               <div ref={logsEndRef}></div>
             </div>
             <div style={{ width: '280px', display: 'flex', flexDirection: 'column' }}>
-              <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>참가자 현황</h2>
+              <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>MULTY-CARD 현황</h2>
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {gameState.players.map(p => {
                   const isSelected = targetPlayerId === p.id;
