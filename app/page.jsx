@@ -55,33 +55,35 @@ export default function Home() {
 
   useEffect(() => {
     import('peerjs').then(({ default: Peer }) => {
-      // 로컬/네트워크 환경에 맞게 서버 설정 (server.js가 3001번 포트에서 실행 중)
-      const peerOptions = {
+      // 로컬인 경우 3001번 포트의 로컬 서버 사용, 아닌 경우(Vercel 등) PeerJS 공식 클라우드 서버 사용
+      const isLocal = window.location.hostname === 'localhost';
+      const peerOptions = isLocal ? {
         host: window.location.hostname,
         port: 3001,
         path: '/peerjs',
-        debug: 3
+        debug: 3,
+        secure: false
+      } : {
+        debug: 3 // 클라우드 서버 사용 시 옵션 최소화
       };
       
-      console.log('Initializing Peer with options:', peerOptions);
+      console.log('PeerJS 초기화 (환경:', isLocal ? '로컬' : '클라우드', '):', peerOptions);
       const newPeer = new Peer(peerOptions);
       
       newPeer.on('open', (id) => {
-        console.log('Peer connected with ID:', id);
+        console.log('PeerJS 연결 성공! ID:', id);
         setMyPeerId(id);
-      });
-
-      newPeer.on('connection', (conn) => {
-        console.log('Incoming connection from:', conn.peer);
-        setupConnection(conn);
+        // 클라우드 서버 사용 시 displayRoomCode를 PeerID로 초기화 (이전 방식 호환)
+        if (!isLocal) setDisplayRoomCode(id);
       });
 
       newPeer.on('error', (err) => {
-        console.error('Peer error:', err);
+        console.error('PeerJS 연결 에러 상세:', err);
+        // 에러 발생 시 사용자에게 알림
         if (err.type === 'peer-unavailable') {
-          alert('상대방을 찾을 수 없습니다. 코드를 다시 확인해주세요.');
-        } else {
-          alert('피어 연결 오류: ' + err.message);
+          alert('대상 서버를 찾을 수 없습니다.');
+        } else if (err.type === 'network') {
+          console.log('네트워크 에러 발생, 서버 상태를 확인하세요.');
         }
       });
 
@@ -89,21 +91,40 @@ export default function Home() {
     });
 
     // 소켓 연결
-    const newSocket = io(window.location.hostname === 'localhost' ? 'http://localhost:3001' : `http://${window.location.hostname}:3001`);
+    const socketUrl = window.location.hostname === 'localhost' 
+      ? 'http://localhost:3001' 
+      : `http://${window.location.hostname}:3001`;
+    
+    console.log('Socket.io 연결 시도:', socketUrl);
+    const newSocket = io(socketUrl, {
+      reconnectionAttempts: 5,
+      timeout: 10000
+    });
     setSocket(newSocket);
 
+    newSocket.on('connect', () => {
+      console.log('Socket.io 연결 성공!');
+    });
+
+    newSocket.on('connect_error', (err) => {
+      console.error('Socket.io 연결 에러:', err);
+    });
+
     newSocket.on('roomCreated', ({ roomId }) => {
+      console.log('방 생성됨:', roomId);
       setDisplayRoomCode(roomId);
     });
 
     newSocket.on('roomJoined', ({ code, hostPeerId }) => {
       setDisplayRoomCode(code);
-      console.log('Room joined, connecting to host peer:', hostPeerId);
-      const c = peerRef.current.connect(hostPeerId, { metadata: { nickname: nicknameRef.current } });
-      setupConnection(c);
-      c.on('open', () => {
-        c.send({ type: 'JOIN_REQUEST', nickname: nicknameRef.current });
-      });
+      console.log('방 입장 성공, 호스트 PeerID:', hostPeerId);
+      if (peerRef.current) {
+        const c = peerRef.current.connect(hostPeerId, { metadata: { nickname: nicknameRef.current } });
+        setupConnection(c);
+        c.on('open', () => {
+          c.send({ type: 'JOIN_REQUEST', nickname: nicknameRef.current });
+        });
+      }
     });
 
     newSocket.on('errorMsg', (msg) => {
@@ -111,7 +132,7 @@ export default function Home() {
     });
 
     return () => { 
-      if (peer) peer.destroy(); 
+      if (newPeer) newPeer.destroy(); 
       if (newSocket) newSocket.disconnect();
     };
   }, []);
