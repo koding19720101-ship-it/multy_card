@@ -16,7 +16,6 @@ export default function Home() {
   const [gameState, setGameState] = useState(null);
   const [selectedCardUids, setSelectedCardUids] = useState([]);
   const [targetPlayerId, setTargetPlayerId] = useState(null);
-  const [socket, setSocket] = useState(null);
   const [displayRoomCode, setDisplayRoomCode] = useState('');
 
   const playersRef = useRef([]);
@@ -55,85 +54,35 @@ export default function Home() {
 
   useEffect(() => {
     import('peerjs').then(({ default: Peer }) => {
-      // 로컬인 경우 3001번 포트의 로컬 서버 사용, 아닌 경우(Vercel 등) PeerJS 공식 클라우드 서버 사용
-      const isLocal = window.location.hostname === 'localhost';
-      const peerOptions = isLocal ? {
-        host: window.location.hostname,
-        port: 3001,
-        path: '/peerjs',
-        debug: 3,
-        secure: false
-      } : {
-        debug: 3 // 클라우드 서버 사용 시 옵션 최소화
+      // Vercel 환경에서 가장 안정적인 공식 클라우드 서버 사용
+      const peerOptions = {
+        debug: 3
       };
       
-      console.log('PeerJS 초기화 (환경:', isLocal ? '로컬' : '클라우드', '):', peerOptions);
+      console.log('PeerJS P2P 모드 초기화...');
       const newPeer = new Peer(peerOptions);
       
       newPeer.on('open', (id) => {
-        console.log('PeerJS 연결 성공! ID:', id);
+        console.log('나의 Peer ID:', id);
         setMyPeerId(id);
-        // 클라우드 서버 사용 시 displayRoomCode를 PeerID로 초기화 (이전 방식 호환)
-        if (!isLocal) setDisplayRoomCode(id);
+        setDisplayRoomCode(id); // 다시 긴 ID를 방 코드로 사용
+      });
+
+      newPeer.on('connection', (conn) => {
+        console.log('외부로부터의 P2P 연결 수신:', conn.peer);
+        setupConnection(conn);
       });
 
       newPeer.on('error', (err) => {
-        console.error('PeerJS 연결 에러 상세:', err);
-        // 에러 발생 시 사용자에게 알림
-        if (err.type === 'peer-unavailable') {
-          alert('대상 서버를 찾을 수 없습니다.');
-        } else if (err.type === 'network') {
-          console.log('네트워크 에러 발생, 서버 상태를 확인하세요.');
-        }
+        console.error('PeerJS 에러:', err);
+        alert('연결 오류가 발생했습니다: ' + err.message);
       });
 
       setPeer(newPeer);
     });
 
-    // 소켓 연결
-    const socketUrl = window.location.hostname === 'localhost' 
-      ? 'http://localhost:3001' 
-      : `http://${window.location.hostname}:3001`;
-    
-    console.log('Socket.io 연결 시도:', socketUrl);
-    const newSocket = io(socketUrl, {
-      reconnectionAttempts: 5,
-      timeout: 10000
-    });
-    setSocket(newSocket);
-
-    newSocket.on('connect', () => {
-      console.log('Socket.io 연결 성공!');
-    });
-
-    newSocket.on('connect_error', (err) => {
-      console.error('Socket.io 연결 에러:', err);
-    });
-
-    newSocket.on('roomCreated', ({ roomId }) => {
-      console.log('방 생성됨:', roomId);
-      setDisplayRoomCode(roomId);
-    });
-
-    newSocket.on('roomJoined', ({ code, hostPeerId }) => {
-      setDisplayRoomCode(code);
-      console.log('방 입장 성공, 호스트 PeerID:', hostPeerId);
-      if (peerRef.current) {
-        const c = peerRef.current.connect(hostPeerId, { metadata: { nickname: nicknameRef.current } });
-        setupConnection(c);
-        c.on('open', () => {
-          c.send({ type: 'JOIN_REQUEST', nickname: nicknameRef.current });
-        });
-      }
-    });
-
-    newSocket.on('errorMsg', (msg) => {
-      alert(msg);
-    });
-
     return () => { 
-      if (newPeer) newPeer.destroy(); 
-      if (newSocket) newSocket.disconnect();
+      if (peer) peer.destroy(); 
     };
   }, []);
 
@@ -342,37 +291,24 @@ export default function Home() {
     setAmIHost(true);
     setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]);
     setScreen('lobby');
-    socket.emit('createRoom', { nickname, peerId: myPeerId });
   };
   
   const handleJoinRoom = () => {
     const trimmedCode = roomCode.trim();
     if (!nickname.trim() || !trimmedCode) return alert('닉네임과 방 코드를 입력해주세요!');
-
-    // 4자리 코드인 경우 소켓 서버를 통해 입장 시도 (로컬 환경)
-    if (trimmedCode.length <= 6) {
-      if (!socket || !socket.connected) {
-        return alert('서버와 연결되지 않았습니다. 로컬 서버가 켜져 있는지 확인하세요.');
-      }
-      console.log('소켓 서버를 통해 방 참가 시도:', trimmedCode);
-      socket.emit('joinRoom', { code: trimmedCode, nickname, peerId: myPeerId });
-    } 
-    // 긴 코드(PeerID)인 경우 직접 P2P 연결 시도 (Vercel/Direct 환경)
-    else {
-      if (!peerRef.current) return alert('PeerJS 서버와 연결 중입니다. 잠시 후 다시 시도하세요.');
-      
-      console.log('직접 P2P 연결 시도:', trimmedCode);
-      const c = peerRef.current.connect(trimmedCode, { metadata: { nickname } });
-      setupConnection(c);
-      c.on('open', () => {
-        console.log('호스트에게 참가 요청 전송 중...');
-        c.send({ type: 'JOIN_REQUEST', nickname });
-      });
-      c.on('error', (err) => {
-        console.error('P2P 연결 실패:', err);
-        alert('방 참가에 실패했습니다. 코드를 확인해 주세요.');
-      });
-    }
+    if (!peerRef.current) return alert('통신 서버와 연결 중입니다. 잠시 후 다시 시도하세요.');
+    
+    console.log('방 참가 시도 (Direct P2P):', trimmedCode);
+    const c = peerRef.current.connect(trimmedCode, { metadata: { nickname } });
+    setupConnection(c);
+    c.on('open', () => {
+      console.log('호스트에게 참가 요청 전송 중...');
+      c.send({ type: 'JOIN_REQUEST', nickname });
+    });
+    c.on('error', (err) => {
+      console.error('연결 실패:', err);
+      alert('방 참가에 실패했습니다. 코드를 확인해 주세요.');
+    });
   };
   
   const handleStartGame = () => {
