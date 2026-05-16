@@ -2,23 +2,16 @@
   "name": "multiplayer-card-game",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "start-server": "node server.js",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
-    "express": "^5.2.1",
     "next": "^16.2.6",
-    "peer": "^1.0.2",
     "peerjs": "^1.5.5",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
-    "vite": "^8.0.11"
+    "react-dom": "^19.2.6"
   }
 }

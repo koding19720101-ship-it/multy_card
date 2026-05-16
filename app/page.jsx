@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { io } from 'socket.io-client';
 
 export default function Home() {
   const [peer, setPeer] = useState(null);
@@ -57,7 +56,7 @@ export default function Home() {
     { id: 'torch', name: '횃불', type: 'attack', value: 2, description: '2데미지, 화상 부여\n5턴간 매턴 2데미지', icon: '🔥', weight: 35 },
     { id: 'bandage', name: '붕대', type: 'heal', value: 5, description: '체력 5 회복\n선택 대상 치유', icon: '🩹', weight: 40 },
     { id: 'volcano', name: '화산', type: 'attack', value: 5, description: '자신 제외 모두에게\n5데미지 + 화상 부여', icon: '🌋', isAOE: true, weight: 10 },
-    { id: 'berserk', name: '광폭화', type: 'buff', value: 0, description: '공격 시 1.2배 데미지\n사용 시 턴이 소모되지 않음', icon: '😡', weight: 20 }
+    { id: 'berserk', name: '광폭화', type: 'buff', value: 0, description: '공격 시 1장당 데미지 1.2배\n강력한 일격을 준비함', icon: '😡', weight: 20 }
   ];
 
   const getRandomCard = () => {
@@ -257,7 +256,7 @@ export default function Home() {
     const flashbang = usedCards.find(c => c.id === 'flashbang');
     const torch = usedCards.find(c => c.id === 'torch');
     const volcano = usedCards.find(c => c.id === 'volcano');
-    const berserk = usedCards.find(c => c.id === 'berserk');
+    const berserkCount = usedCards.filter(c => c.id === 'berserk').length;
     
     // 광역 카드 처리 (먹구름, 화산)
     const aoecard = usedCards.find(c => c.isAOE);
@@ -267,7 +266,7 @@ export default function Home() {
         const aliveOtherPlayersCount = newState.players.filter(p => p.id !== attackerId && p.hp > 0).length;
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
-            p.hp = Math.max(0, p.hp - 5); p.status = 'shock'; p.shockDuration = aliveOtherPlayersCount;
+            p.hp = Math.max(0, p.hp - 5); p.status = 'shock'; p.shockDuration = (p.shockDuration || 0) + aliveOtherPlayersCount;
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`); 
           } 
         });
@@ -275,7 +274,7 @@ export default function Home() {
         newState.logs.push(`🌋 ${attacker.nickname}님이 '화산' 폭발 시전! 모두에게 공격!`);
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
-            p.hp = Math.max(0, p.hp - 5); p.status = 'burn'; p.burnDuration = 5; 
+            p.hp = Math.max(0, p.hp - 5); p.status = 'burn'; p.burnDuration = (p.burnDuration || 0) + 5; 
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 용암에 휩쓸려 사망했습니다.`); 
           } 
         });
@@ -301,33 +300,29 @@ export default function Home() {
     
     let totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
     
-    // 광폭화 효과: 데미지 1.2배
-    if (berserk) {
-      totalDamage = Math.floor(totalDamage * 1.2);
-      newState.logs.push(`😡 ${attacker.nickname}님이 광폭화! 데미지가 증가합니다.`);
+    // 광폭화 효과: 한 장당 데미지 1.2배
+    if (berserkCount > 0) {
+      totalDamage = Math.floor(totalDamage * Math.pow(1.2, berserkCount));
+      newState.logs.push(`😡 ${attacker.nickname}님이 광폭화 ${berserkCount}장 사용! 데미지가 증가합니다.`);
     }
 
     attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
 
     // 특수 효과 부여
     if (flashbang) {
-      target.status = 'flash'; target.flashDuration = 3;
-      newState.logs.push(`✨ ${attacker.nickname}님이 '섬광탄' 투척! ${target.nickname}님이 3턴간 섬광 상태가 됩니다.`);
+      target.status = 'flash'; target.flashDuration = (target.flashDuration || 0) + 3;
+      newState.logs.push(`✨ ${attacker.nickname}님이 '섬광탄' 투척! ${target.nickname}님의 섬광 지속시간이 증가합니다.`);
     }
     if (torch) {
-      target.status = 'burn'; target.burnDuration = 5;
-      newState.logs.push(`🔥 ${attacker.nickname}님이 '횃불'로 공격! ${target.nickname}님이 5턴간 화상 상태가 됩니다.`);
+      target.status = 'burn'; target.burnDuration = (target.burnDuration || 0) + 5;
+      newState.logs.push(`🔥 ${attacker.nickname}님이 '횃불'로 공격! ${target.nickname}님의 화상 지속시간이 증가합니다.`);
     }
 
     if (attackerId === finalTargetId) {
       attacker.hp = Math.max(0, attacker.hp - totalDamage);
       newState.logs.push(`💥 ${attacker.nickname}님이 자기 자신을 공격! ${totalDamage} 피해.`);
       while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
-      if (berserk) {
-        newState.logs.push(`😡 광폭화 효과로 턴이 넘어가지 않습니다!`);
-      } else {
-        nextTurn(newState); 
-      }
+      nextTurn(newState); 
       setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
       return;
     }
@@ -336,8 +331,7 @@ export default function Home() {
       attackerId, attackerName: attacker.nickname, targetId: finalTargetId, targetName: target.nickname, 
       damage: totalDamage, 
       hasDoubleEdged: usedCards.some(c => c.id === 'double_edged'),
-      hasBambooSpear: usedCards.some(c => c.id === 'bamboo_spear'),
-      hasBerserk: !!berserk
+      hasBambooSpear: usedCards.some(c => c.id === 'bamboo_spear')
     };
     newState.phase = 'defense';
     newState.logs.push(`${attacker.nickname} ⚔️ ${target.nickname} (공격력 ${totalDamage})`);
@@ -387,11 +381,7 @@ export default function Home() {
     if (originalAttacker) while (originalAttacker.hand.length < 10) originalAttacker.hand.push(getRandomCard());
     while (defender.hand.length < 10) defender.hand.push(getRandomCard());
     newState.currentAttack = null; newState.phase = 'main';
-    if (attack.hasBerserk) {
-      newState.logs.push(`😡 광폭화 효과로 턴이 넘어가지 않습니다!`);
-    } else {
-      nextTurn(newState); 
-    }
+    nextTurn(newState); 
     setGameState(newState); 
     broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
   };
