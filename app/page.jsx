@@ -72,38 +72,50 @@ export default function Home() {
     return { ...CARD_TYPES[0], uid: Math.random().toString(36).substring(2, 10) };
   };
 
-  useEffect(() => {
+  const initPeer = () => {
+    if (peerRef.current) peerRef.current.destroy();
+    
     import('peerjs').then(({ default: Peer }) => {
-      // Vercel 환경에서 가장 안정적인 공식 클라우드 서버 사용
+      // Vercel(HTTPS) 환경 필수 설정 및 구글 STUN 서버 추가로 연결성 강화
       const peerOptions = {
-        debug: 3
+        debug: 3,
+        secure: true,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
       };
       
-      console.log('PeerJS P2P 모드 초기화...');
+      console.log('PeerJS 초기화 시작...');
       const newPeer = new Peer(peerOptions);
       
       newPeer.on('open', (id) => {
-        console.log('나의 Peer ID:', id);
+        console.log('PeerJS 연결 성공! ID:', id);
         setMyPeerId(id);
-        setDisplayRoomCode(id); // 다시 긴 ID를 방 코드로 사용
+        setDisplayRoomCode(id);
       });
 
       newPeer.on('connection', (conn) => {
-        console.log('외부로부터의 P2P 연결 수신:', conn.peer);
+        console.log('외부 연결 수신:', conn.peer);
         setupConnection(conn);
       });
 
       newPeer.on('error', (err) => {
         console.error('PeerJS 에러:', err);
-        alert('연결 오류가 발생했습니다: ' + err.message);
+        if (err.type === 'peer-unavailable') alert('상대방을 찾을 수 없습니다. 코드를 확인하세요.');
+        else if (err.type === 'network') alert('네트워크 오류가 발생했습니다.');
+        else alert('연결 오류: ' + err.message);
       });
 
       setPeer(newPeer);
     });
+  };
 
-    return () => { 
-      if (peer) peer.destroy(); 
-    };
+  useEffect(() => {
+    initPeer();
+    return () => { if (peerRef.current) peerRef.current.destroy(); };
   }, []);
 
   const peerRef = useRef(null);
@@ -248,8 +260,9 @@ export default function Home() {
     const berserk = usedCards.find(c => c.id === 'berserk');
     
     // 광역 카드 처리 (먹구름, 화산)
-    if (darkCloud || volcano) {
-      if (darkCloud) {
+    const aoecard = usedCards.find(c => c.isAOE);
+    if (aoecard) {
+      if (aoecard.id === 'dark_cloud') {
         newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전! 모두에게 공격!`);
         const aliveOtherPlayersCount = newState.players.filter(p => p.id !== attackerId && p.hp > 0).length;
         newState.players.forEach(p => { 
@@ -258,7 +271,7 @@ export default function Home() {
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`); 
           } 
         });
-      } else if (volcano) {
+      } else if (aoecard.id === 'volcano') {
         newState.logs.push(`🌋 ${attacker.nickname}님이 '화산' 폭발 시전! 모두에게 공격!`);
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
@@ -539,6 +552,14 @@ export default function Home() {
   const isDarkCloudSelected = selectedCards.some(c => c?.isAOE);
 
   return (
+    <div className="main-app" style={{ position: 'relative' }}>
+      {/* 상단 연결 상태 표시기 */}
+      <div style={{ position: 'fixed', top: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', zIndex: 1000, background: 'rgba(255,255,255,0.8)', padding: '5px 10px', borderRadius: '20px', border: '1px solid #e5e7eb' }}>
+        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: myPeerId ? '#10b981' : '#ef4444' }}></div>
+        <span>{myPeerId ? '통신 서버 연결됨' : '연결 중...'}</span>
+        {!myPeerId && <button onClick={initPeer} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto' }}>재시도</button>}
+      </div>
+
     <div className={screen === 'game' ? 'game-container' : 'card'}>
       {screen === 'home' && (
         <div>
@@ -651,6 +672,11 @@ export default function Home() {
           </div>
         </div>
       )}
+      
+      {/* 하단 버전 정보 */}
+      <div style={{ position: 'fixed', bottom: '5px', right: '10px', fontSize: '0.6rem', color: '#9ca3af' }}>
+        v1.0.8 - AOE Fix & Connection Stabilized
+      </div>
     </div>
   );
 }
