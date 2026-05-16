@@ -52,12 +52,36 @@ export default function Home() {
 
   useEffect(() => {
     import('peerjs').then(({ default: Peer }) => {
-      const newPeer = new Peer();
-      newPeer.on('open', (id) => setMyPeerId(id));
+      // 로컬/네트워크 환경에 맞게 서버 설정 (server.js가 3001번 포트에서 실행 중)
+      const peerOptions = {
+        host: window.location.hostname,
+        port: 3001,
+        path: '/peerjs',
+        debug: 3
+      };
+      
+      console.log('Initializing Peer with options:', peerOptions);
+      const newPeer = new Peer(peerOptions);
+      
+      newPeer.on('open', (id) => {
+        console.log('Peer connected with ID:', id);
+        setMyPeerId(id);
+      });
+
       newPeer.on('connection', (conn) => {
         console.log('Incoming connection from:', conn.peer);
         setupConnection(conn);
       });
+
+      newPeer.on('error', (err) => {
+        console.error('Peer error:', err);
+        if (err.type === 'peer-unavailable') {
+          alert('상대방을 찾을 수 없습니다. 코드를 다시 확인해주세요.');
+        } else {
+          alert('피어 연결 오류: ' + err.message);
+        }
+      });
+
       setPeer(newPeer);
     });
     return () => { if (peer) peer.destroy(); };
@@ -68,32 +92,64 @@ export default function Home() {
   }, [gameState?.logs]);
 
   const setupConnection = (conn) => {
+    // 연결 시도 시점에 즉시 등록하여 레이스 컨디션 방지
+    if (conn.peer) {
+      connectionsRef.current[conn.peer] = conn;
+    }
+
     conn.on('open', () => {
       console.log('Connection opened with:', conn.peer);
+      // 확실히 등록 확인
       connectionsRef.current[conn.peer] = conn;
+      
       // 게스트인 경우 방금 연결된 피어를 호스트로 설정
-      if (!amIHost) hostConnRef.current = conn;
+      if (!amIHost) {
+        hostConnRef.current = conn;
+      }
     });
-    conn.on('data', (data) => handleData(conn.peer, data));
-    conn.on('error', (err) => console.error('Connection error:', err));
+
+    conn.on('data', (data) => {
+      console.log('Data received from', conn.peer, ':', data.type);
+      handleData(conn.peer, data);
+    });
+
+    conn.on('error', (err) => {
+      console.error('Connection error with:', conn.peer, err);
+    });
+
     conn.on('close', () => {
       console.log('Connection closed:', conn.peer);
       delete connectionsRef.current[conn.peer];
+      
+      // 호스트와의 연결이 끊긴 경우 알림
+      if (conn.peer === hostConnRef.current?.peer) {
+        alert('호스트와의 연결이 끊어졌습니다.');
+        window.location.reload();
+      }
     });
   };
 
   const handleData = (senderPeerId, msg) => {
-    console.log('Received data:', msg.type, 'from', senderPeerId);
     switch (msg.type) {
       case 'JOIN_REQUEST':
+        console.log('Handling JOIN_REQUEST from:', senderPeerId);
+        // 이미 있는 플레이어인지 확인
+        if (playersRef.current.some(p => p.id === senderPeerId)) return;
+        
         const nextPlayers = [...playersRef.current, { id: senderPeerId, nickname: msg.nickname, hp: 100, status: null }];
         setPlayers(nextPlayers);
-        // 모든 연결된 피어에게 플레이어 리스트 업데이트
-        setTimeout(() => broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers }), 200);
+        
+        // 새로운 플레이어 리스트를 즉시 전파
+        // 조금의 지연을 주어 상태 업데이트가 반영되도록 함
+        setTimeout(() => {
+          console.log('Broadcasting updated player list...');
+          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers });
+        }, 300);
         break;
       case 'PLAYER_LIST_UPDATE':
+        console.log('Received PLAYER_LIST_UPDATE:', msg.players);
         setPlayers(msg.players);
-        setScreen('lobby'); // 리스트를 받으면 확실하게 로비로 이동
+        setScreen('lobby');
         break;
       case 'GAME_START':
       case 'GAME_STATE_UPDATE':
@@ -113,10 +169,13 @@ export default function Home() {
   };
 
   const broadcast = (data) => {
-    Object.values(connectionsRef.current).forEach(conn => {
-      if (conn.open) {
-        console.log('Broadcasting to:', conn.peer);
+    const conns = Object.values(connectionsRef.current);
+    console.log(`Broadcasting ${data.type} to ${conns.length} peers`);
+    conns.forEach(conn => {
+      if (conn && conn.open) {
         conn.send(data);
+      } else {
+        console.warn('Skipping closed or null connection for broadcast');
       }
     });
   };
@@ -125,14 +184,16 @@ export default function Home() {
     if (hostConnRef.current && hostConnRef.current.open) {
       hostConnRef.current.send(data);
     } else {
-      console.error('Host connection not available');
+      console.error('Host connection not available or not open');
+      alert('호스트와 연결되어 있지 않습니다.');
     }
   };
 
+  // 게임 로직들... (변경 없음)
   const processAttack = (attackerId, { targetId, cardUids }) => {
     const newState = JSON.parse(JSON.stringify(gameStateRef.current));
     const attacker = newState.players.find(p => p.id === attackerId);
-    if (attacker.status === 'shock') return;
+    if (!attacker || attacker.status === 'shock') return;
     const darkCloud = attacker.hand.find(c => c.uid === cardUids[0] && c.id === 'dark_cloud');
     if (darkCloud) {
       newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전!`);
@@ -143,6 +204,7 @@ export default function Home() {
       return;
     }
     const target = newState.players.find(p => p.id === targetId);
+    if (!target) return;
     const usedCards = attacker.hand.filter(c => cardUids.includes(c.uid));
     const totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
     attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
@@ -162,6 +224,7 @@ export default function Home() {
   const processDefense = (defenderId, { cardUids, newTargetId }) => {
     const newState = JSON.parse(JSON.stringify(gameStateRef.current));
     const attack = newState.currentAttack;
+    if (!attack) return;
     const defender = newState.players.find(p => p.id === defenderId);
     const usedCards = defender.hand.filter(c => cardUids.includes(c.uid));
     const orbitShiftCard = usedCards.find(c => c.id === 'orbit_shift');
@@ -198,6 +261,7 @@ export default function Home() {
 
   const handleCreateRoom = () => {
     if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
+    if (!myPeerId) return alert('서버와 연결 중입니다. 잠시만 기다려주세요!');
     setAmIHost(true);
     setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]);
     setScreen('lobby');
@@ -205,14 +269,19 @@ export default function Home() {
   
   const handleJoinRoom = () => {
     if (!nickname.trim() || !roomCode.trim()) return alert('닉네임과 방 코드를 입력해주세요!');
-    console.log('Attempting to join room:', roomCode.trim());
-    const c = peer.connect(roomCode.trim());
+    if (!peer) return alert('PeerJS가 초기화되지 않았습니다.');
+    
+    console.log('Attempting to connect to host:', roomCode.trim());
+    const c = peer.connect(roomCode.trim(), {
+      metadata: { nickname } // 메타데이터로 닉네임 전달 시도
+    });
+    
     setupConnection(c);
+    
     c.on('open', () => {
-      console.log('Sending join request to host...');
+      console.log('Connection to host opened! Sending join request...');
       c.send({ type: 'JOIN_REQUEST', nickname });
     });
-    c.on('error', (err) => alert('방 참가에 실패했습니다. 코드를 확인해주세요.'));
   };
   
   const handleStartGame = () => {
@@ -265,9 +334,19 @@ export default function Home() {
       {screen === 'lobby' && (
         <div>
           <h1>MULTY-CARD 대기실</h1>
-          <p>내 코드: <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{myPeerId}</span></p>
-          <ul style={{ listStyle: 'none', padding: 0, margin: '2rem 0' }}>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', background: '#f9fafb', borderRadius: '12px', marginBottom: '0.5rem', border: '1px solid #e5e7eb' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
-          {amIHost ? <button onClick={handleStartGame}>게임 시작</button> : <p style={{ fontWeight: '600' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
+          <p style={{ marginBottom: '0.5rem' }}>내 코드:</p>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '0.75rem', borderRadius: '12px', marginBottom: '2rem' }}>
+            <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.1rem', wordBreak: 'break-all' }}>{myPeerId}</span>
+            <button 
+              onClick={() => {
+                navigator.clipboard.writeText(myPeerId);
+                alert('코드가 복사되었습니다!');
+              }}
+              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#475569' }}
+            >복사</button>
+          </div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0' }}>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', background: '#f9fafb', borderRadius: '12px', marginBottom: '0.5rem', border: '1px solid #e5e7eb' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
+          {amIHost ? <button onClick={handleStartGame}>게임 시작</button> : <p style={{ fontWeight: '600', color: '#64748b' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
         </div>
       )}
 
