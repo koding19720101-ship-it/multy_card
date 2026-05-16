@@ -17,7 +17,7 @@ body {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  overflow: hidden; /* 페이지 전체 스크롤은 막음 */
+  overflow: hidden;
 }
 
 .card {
@@ -32,73 +32,12 @@ body {
   padding: 1.5rem;
   border-radius: 16px;
   border: 1px solid var(--border);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
   width: 95vw;
-  max-width: 1300px;
+  max-width: 1400px;
   display: flex;
   flex-direction: column;
-}
-
-/* 카드 컨테이너 가로 스크롤 극대화 */
-.hand-container {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;     /* 절대 줄바꿈 금지 */
-  overflow-x: scroll;    /* 가로 스크롤 강제 */
-  overflow-y: hidden;
-  gap: 16px;
-  padding: 24px;
-  margin-top: 1rem;
-  background-color: #f1f5f9;
-  border-radius: 12px;
-  width: 100%;
-  box-sizing: border-box;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* 스크롤바가 안보여도 작동하도록 설정 */
-.hand-container::-webkit-scrollbar {
-  height: 6px; /* 아주 얇게 표시하여 존재 알림 */
-}
-.hand-container::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.playing-card {
-  flex: 0 0 140px; /* 줄어들지 않는 고정 너비 */
-  height: 200px;
-  background-color: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  transition: transform 0.2s;
-}
-
-.playing-card.selected {
-  border: 3px solid var(--primary);
-  background-color: #f5f3ff;
-  transform: translateY(-10px);
-}
-
-.playing-card.type-attack { border-top: 6px solid #ef4444; }
-.playing-card.type-defense { border-top: 6px solid #3b82f6; }
-
-.player-item {
-  padding: 1rem;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid var(--border);
-  margin-bottom: 0.75rem;
-  cursor: pointer;
-}
-
-.player-item.target-selected {
-  border: 2px solid #ef4444;
-  background: #fef2f2;
+  height: 95vh;
 }
 
 .game-logs {
@@ -106,15 +45,81 @@ body {
   padding: 1.25rem;
   border-radius: 12px;
   border: 1px solid var(--border);
+  color: #334155;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
   overflow-y: auto;
+}
+
+/* 가로 스크롤 컨테이너 최적화 */
+.hand-container {
+  display: flex;
+  flex-direction: row;
+  overflow-x: scroll; /* 스크롤 강제 */
+  gap: 16px;
+  padding: 24px;
+  background-color: #f1f5f9;
+  border-radius: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox 스크롤바 숨김 */
+}
+
+/* 크롬, 사파리 스크롤바 숨김 */
+.hand-container::-webkit-scrollbar {
+  display: none;
+}
+
+.playing-card {
+  flex: 0 0 160px; /* 절대 줄어들지 않도록 크기 고정 */
+  height: 220px;
+  background-color: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  user-select: none;
+}
+
+.playing-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.playing-card.selected {
+  border: 3px solid var(--primary);
+  background-color: #f5f3ff;
+  transform: translateY(-20px);
+}
+
+.playing-card.type-attack { border-top: 8px solid #ef4444; }
+.playing-card.type-defense { border-top: 8px solid #3b82f6; }
+
+.player-item {
+  padding: 1rem;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+
+.player-item.target-selected {
+  border: 2px solid #ef4444;
+  background: #fef2f2;
 }
 
 .hp-bar {
   width: 100%;
-  height: 8px;
+  height: 10px;
   background: #e2e8f0;
-  border-radius: 4px;
+  border-radius: 5px;
   margin-top: 8px;
+  overflow: hidden;
 }
 
 .hp-fill {
