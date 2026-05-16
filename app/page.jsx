@@ -408,7 +408,7 @@ export default function Home() {
               {gameState.logs.map((l, i) => <div key={i}>{l}</div>)}
               <div ref={logsEndRef}></div>
             </div>
-            <div style={{ width: '280px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ width: '280px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
               <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>MULTY-CARD 현황</h2>
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {gameState.players.map(p => {
