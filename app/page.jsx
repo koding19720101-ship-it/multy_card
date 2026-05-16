@@ -262,14 +262,14 @@ export default function Home() {
       `}</style>
 
       {screen === 'home' && (
-        <div style={{ padding: '3rem 1rem' }}>
-          <h1 style={{ fontSize: '2.5rem', letterSpacing: '-0.05em' }}>MULTY-CARD</h1>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>친구와 실시간으로 대결하세요</p>
+        <div>
+          <h1>MULTY-CARD</h1>
+          <p>친구와 실시간으로 대결하세요</p>
           <div style={{ maxWidth: '320px', margin: '0 auto' }}>
             <input type="text" placeholder="사용할 닉네임" value={nickname} onChange={e => setNickname(e.target.value)} />
             <button onClick={handleCreateRoom} style={{ marginBottom: '1rem' }}>새 방 만들기</button>
-            <div style={{ borderTop: '1px solid var(--border)', margin: '1.5rem 0', position: 'relative' }}>
-              <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: '#fff', padding: '0 10px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>또는</span>
+            <div className="divider">
+              <span className="divider-text">또는</span>
             </div>
             <input type="text" placeholder="방 코드 (Host ID)" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
             <button onClick={handleJoinRoom} style={{ background: '#64748b' }}>방 참가하기</button>
@@ -278,11 +278,11 @@ export default function Home() {
       )}
 
       {screen === 'lobby' && (
-        <div style={{ padding: '2rem' }}>
+        <div>
           <h1>MULTY-CARD 대기실</h1>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>내 코드: <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{myPeerId}</span></p>
-          <ul>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
-          {amIHost ? <button onClick={handleStartGame} style={{ marginTop: '1rem' }}>게임 시작</button> : <p style={{ marginTop: '1rem' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
+          <p>내 코드: <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{myPeerId}</span></p>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '2rem 0' }}>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', background: '#f9fafb', borderRadius: '12px', marginBottom: '0.5rem', border: '1px solid #e5e7eb' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
+          {amIHost ? <button onClick={handleStartGame}>게임 시작</button> : <p style={{ fontWeight: '600' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
         </div>
       )}
 
@@ -313,7 +313,7 @@ export default function Home() {
                   );
                 })}
               </div>
-              <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {isMyTurn && myState?.hp > 0 && gameState.phase === 'main' && (
                   <>
                     <button disabled={myState.status === 'shock'} onClick={() => {
@@ -343,9 +343,9 @@ export default function Home() {
                 onClick={() => toggleCardSelection(c.uid)}
                 style={{ height: '200px', minWidth: '160px', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
-                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text)' }}>{c.name}</div>
+                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</div>
                 <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: '5px' }}>{c.description}</div>
-                <div style={{ fontWeight: 'bold', borderTop: '1px solid var(--border)', paddingTop: '5px', color: 'var(--text)' }}>{c.value > 0 ? c.value : '-'}</div>
+                <div style={{ fontWeight: 'bold', borderTop: '1px solid #e5e7eb', paddingTop: '5px', color: 'var(--text-main)' }}>{c.value > 0 ? c.value : '-'}</div>
               </div>
             ))}
           </div>
