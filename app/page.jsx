@@ -250,7 +250,7 @@ export default function Home() {
     // 광역 카드 처리 (먹구름, 화산)
     if (darkCloud || volcano) {
       if (darkCloud) {
-        newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전!`);
+        newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전! 모두에게 공격!`);
         const aliveOtherPlayersCount = newState.players.filter(p => p.id !== attackerId && p.hp > 0).length;
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
@@ -259,7 +259,7 @@ export default function Home() {
           } 
         });
       } else if (volcano) {
-        newState.logs.push(`🌋 ${attacker.nickname}님이 '화산' 폭발 시전!`);
+        newState.logs.push(`🌋 ${attacker.nickname}님이 '화산' 폭발 시전! 모두에게 공격!`);
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
             p.hp = Math.max(0, p.hp - 5); p.status = 'burn'; p.burnDuration = 5; 
