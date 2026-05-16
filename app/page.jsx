@@ -20,10 +20,13 @@ export default function Home() {
   const gameStateRef = useRef(null);
   const connectionsRef = useRef({}); 
   const hostConnRef = useRef(null);
-
-  const myStreamRef = useRef(null);
-  const audioContainerRef = useRef(null);
   const logsEndRef = useRef(null);
+
+  // 드래그 스크롤을 위한 Ref 및 상태
+  const handRef = useRef(null);
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const scrollLeft = useRef(0);
 
   useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -109,7 +112,6 @@ export default function Home() {
     const newState = JSON.parse(JSON.stringify(gameStateRef.current));
     const attacker = newState.players.find(p => p.id === attackerId);
     if (attacker.status === 'shock') return;
-
     const darkCloud = attacker.hand.find(c => c.uid === cardUids[0] && c.id === 'dark_cloud');
     if (darkCloud) {
       newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전!`);
@@ -125,21 +127,17 @@ export default function Home() {
       nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
       return;
     }
-
     const target = newState.players.find(p => p.id === targetId);
     const usedCards = attacker.hand.filter(c => cardUids.includes(c.uid));
     const totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
     attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
-    
     if (attackerId === targetId) {
       attacker.hp = Math.max(0, attacker.hp - totalDamage);
       newState.logs.push(`💥 ${attacker.nickname}님이 자기 자신을 공격! ${totalDamage} 피해.`);
-      if (attacker.hp <= 0) newState.logs.push(`💀 ${attacker.nickname}님이 자폭하셨습니다.`);
       while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
       nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
       return;
     }
-
     newState.currentAttack = { attackerId, attackerName: attacker.nickname, targetId, targetName: target.nickname, damage: totalDamage, hasDoubleEdged: usedCards.some(c => c.id === 'double_edged') };
     newState.phase = 'defense';
     newState.logs.push(`${attacker.nickname} ⚔️ ${target.nickname} (공격력 ${totalDamage})`);
@@ -151,7 +149,6 @@ export default function Home() {
     const attack = newState.currentAttack;
     const defender = newState.players.find(p => p.id === defenderId);
     const usedCards = defender.hand.filter(c => cardUids.includes(c.uid));
-    
     const orbitShiftCard = usedCards.find(c => c.id === 'orbit_shift');
     if (orbitShiftCard && newTargetId) {
       newState.logs.push(`🌀 ${defender.nickname}님의 궤도변환! 타겟: ${newState.players.find(p => p.id === newTargetId).nickname}`);
@@ -164,13 +161,10 @@ export default function Home() {
       setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
       return;
     }
-
-    const totalDefense = usedCards.reduce((sum, c) => sum + (c.type === 'defense' ? c.value : 0), 0);
+    const totalDefense = usedCards.reduce((sum, c) => sum + (c.type === 'defense' ? c.value : 0),0);
     const hasBlackHole = usedCards.some(c => c.id === 'black_hole');
     defender.hand = defender.hand.filter(c => !cardUids.includes(c.uid));
-    
     let finalDamage = Math.max(0, attack.damage - totalDefense);
-    
     if (hasBlackHole && finalDamage > 0) {
       newState.logs.push(`🕳️ 블랙홀 폭발! 모두에게 75의 피해를 입히고 시공간이 뒤틀립니다!`);
       newState.players.forEach(p => {
@@ -184,9 +178,7 @@ export default function Home() {
     } else {
       defender.hp = Math.max(0, defender.hp - finalDamage);
       newState.logs.push(`${defender.nickname} 🛡️ 방어 ${totalDefense}. 피해 ${finalDamage}.`);
-      if (defender.hp <= 0) newState.logs.push(`💀 ${defender.nickname}님이 사망하셨습니다!`);
     }
-    
     if (attack.hasDoubleEdged && finalDamage > 0) {
       const attacker = newState.players.find(p => p.id === attack.attackerId);
       if (attacker) attacker.hp = Math.max(0, attacker.hp - finalDamage);
@@ -201,10 +193,7 @@ export default function Home() {
   const processSkip = (playerId) => {
     const newState = JSON.parse(JSON.stringify(gameStateRef.current));
     const player = newState.players.find(p => p.id === playerId);
-    if (player.status === 'shock') {
-      player.status = null;
-      newState.logs.push(`⚡ ${player.nickname}님의 감전이 해제되었습니다.`);
-    }
+    if (player.status === 'shock') { player.status = null; newState.logs.push(`⚡ ${player.nickname}님의 감전이 해제되었습니다.`); }
     nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
   };
 
@@ -217,24 +206,9 @@ export default function Home() {
     } else { state.logs.push(`>>> ${state.players[state.turnIndex].nickname}님의 턴 <<<`); }
   };
 
-  const handleCreateRoom = () => { 
-    if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
-    setAmIHost(true); setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]); setScreen('lobby'); 
-  };
-  
-  const handleJoinRoom = () => { 
-    if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
-    if (!roomCode.trim()) return alert('방 코드를 입력해주세요!');
-    const c = peer.connect(roomCode.trim()); 
-    setupConnection(c); 
-    c.on('open', () => c.send({ type: 'JOIN_REQUEST', nickname })); 
-  };
-  
-  const handleStartGame = () => {
-    if (players.length < 2) return alert('최소 2명의 플레이어가 필요합니다!');
-    const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard) })), currentAttack: null, logs: ['전투 시작!'] };
-    setGameState(s); setScreen('game'); broadcast({ type: 'GAME_START', gameState: s, players });
-  };
+  const handleCreateRoom = () => { if (!nickname.trim()) return alert('닉네임을 입력해주세요!'); setAmIHost(true); setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]); setScreen('lobby'); };
+  const handleJoinRoom = () => { if (!nickname.trim() || !roomCode.trim()) return alert('닉네임과 방 코드를 입력해주세요!'); const c = peer.connect(roomCode.trim()); setupConnection(c); c.on('open', () => c.send({ type: 'JOIN_REQUEST', nickname })); };
+  const handleStartGame = () => { if (players.length < 2) return alert('최소 2명의 플레이어가 필요합니다!'); const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard) })), currentAttack: null, logs: ['전투 시작!'] }; setGameState(s); setScreen('game'); broadcast({ type: 'GAME_START', gameState: s, players }); };
 
   const toggleCardSelection = (uid) => {
     const card = myState?.hand.find(c => c.uid === uid);
@@ -247,6 +221,22 @@ export default function Home() {
     });
   };
 
+  // 드래그 스크롤 핸들러
+  const handleMouseDown = (e) => {
+    isDragging.current = true;
+    startX.current = e.pageX - handRef.current.offsetLeft;
+    scrollLeft.current = handRef.current.scrollLeft;
+  };
+  const handleMouseLeave = () => { isDragging.current = false; };
+  const handleMouseUp = () => { isDragging.current = false; };
+  const handleMouseMove = (e) => {
+    if (!isDragging.current) return;
+    e.preventDefault();
+    const x = e.pageX - handRef.current.offsetLeft;
+    const walk = (x - startX.current) * 2;
+    handRef.current.scrollLeft = scrollLeft.current - walk;
+  };
+
   const myState = gameState?.players.find(p => p.id === myPeerId);
   const isMyTurn = gameState && gameState.players[gameState.turnIndex].id === myPeerId;
   const isTarget = gameState?.currentAttack?.targetId === myPeerId;
@@ -256,11 +246,6 @@ export default function Home() {
 
   return (
     <div className={screen === 'game' ? 'game-container' : 'card'}>
-      <style jsx global>{`
-        ::-webkit-scrollbar { display: none; }
-        * { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
-
       {screen === 'home' && (
         <div>
           <h1>MULTY-CARD</h1>
@@ -268,9 +253,7 @@ export default function Home() {
           <div style={{ maxWidth: '320px', margin: '0 auto' }}>
             <input type="text" placeholder="사용할 닉네임" value={nickname} onChange={e => setNickname(e.target.value)} />
             <button onClick={handleCreateRoom} style={{ marginBottom: '1rem' }}>새 방 만들기</button>
-            <div className="divider">
-              <span className="divider-text">또는</span>
-            </div>
+            <div className="divider"><span className="divider-text">또는</span></div>
             <input type="text" placeholder="방 코드 (Host ID)" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
             <button onClick={handleJoinRoom} style={{ background: '#64748b' }}>방 참가하기</button>
           </div>
@@ -307,7 +290,7 @@ export default function Home() {
                         <span style={{ fontWeight: 'bold' }}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</span>
                         <span>{p.hp} HP</span>
                       </div>
-                      {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 상태 (행동 불가)</div>}
+                      {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 상태</div>}
                       <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
                     </div>
                   );
@@ -322,8 +305,8 @@ export default function Home() {
                       const data = { targetId: targetPlayerId, cardUids: selectedCardUids };
                       if (amIHost) processAttack(myPeerId, data); else sendToHost({ type: 'ACTION_ATTACK', data });
                       setSelectedCardUids([]); setTargetPlayerId(null);
-                    }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem', fontSize: '1.1rem' }}>{isDarkCloudSelected ? '먹구름 시전' : '공격하기'}</button>
-                    <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem', fontSize: '1.1rem' }}>턴 넘기기</button>
+                    }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem' }}>{isDarkCloudSelected ? '먹구름 시전' : '공격하기'}</button>
+                    <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem' }}>턴 넘기기</button>
                   </>
                 )}
                 {gameState.phase === 'defense' && isTarget && (
@@ -331,16 +314,22 @@ export default function Home() {
                     const data = { cardUids: selectedCardUids, newTargetId: targetPlayerId };
                     if (amIHost) processDefense(myPeerId, data); else sendToHost({ type: 'ACTION_DEFENSE', data });
                     setSelectedCardUids([]); setTargetPlayerId(null);
-                  }} style={{ background: '#3b82f6', padding: '1rem', fontSize: '1.1rem' }}>{isOrbitShiftSelected ? '궤도변환 실행' : '방어 / 받기'}</button>
+                  }} style={{ background: '#3b82f6', padding: '1rem' }}>{isOrbitShiftSelected ? '궤도변환 실행' : '방어 / 받기'}</button>
                 )}
-                {gameState.phase === 'gameover' && <button onClick={() => window.location.reload()} style={{ padding: '1rem' }}>다시 하기</button>}
+                {gameState.phase === 'gameover' && <button onClick={() => window.location.reload()}>다시 하기</button>}
               </div>
             </div>
           </div>
-          <div className="hand-container" style={{ opacity: myState?.hp <= 0 ? 0.5 : 1 }}>
+          <div className="hand-container" 
+            ref={handRef}
+            onMouseDown={handleMouseDown}
+            onMouseLeave={handleMouseLeave}
+            onMouseUp={handleMouseUp}
+            onMouseMove={handleMouseMove}
+            style={{ opacity: myState?.hp <= 0 ? 0.5 : 1, cursor: 'grab' }}>
             {myState?.hand.map(c => (
               <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} 
-                onClick={() => toggleCardSelection(c.uid)}
+                onClick={() => !isDragging.current && toggleCardSelection(c.uid)}
                 style={{ height: '200px', minWidth: '160px', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
                 <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</div>
