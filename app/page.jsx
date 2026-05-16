@@ -565,121 +565,122 @@ export default function Home() {
       </div>
 
       <div className={screen === 'game' ? 'game-container' : 'card'}>
-      {screen === 'home' && (
-        <div>
-          <h1>MULTY-CARD</h1>
-          <p>친구와 실시간으로 대결하세요</p>
-          <div style={{ maxWidth: '320px', margin: '0 auto' }}>
-            <input type="text" placeholder="사용할 닉네임" value={nickname} onChange={e => setNickname(e.target.value)} />
-            <button onClick={handleCreateRoom} style={{ marginBottom: '1rem' }}>새 방 만들기</button>
-            <div className="divider"><span className="divider-text">또는</span></div>
-            <input type="text" placeholder="방 코드 (Host ID)" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
-            <button onClick={handleJoinRoom} style={{ background: '#64748b' }}>방 참가하기</button>
-          </div>
-        </div>
-      )}
-
-      {screen === 'lobby' && (
-        <div>
-          <h1>MULTY-CARD 대기실</h1>
-          <p style={{ marginBottom: '0.5rem' }}>내 방 코드:</p>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '0.75rem', borderRadius: '12px', marginBottom: '2rem' }}>
-            <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode}</span>
-            <button 
-              onClick={() => {
-                navigator.clipboard.writeText(displayRoomCode);
-                alert('코드가 복사되었습니다!');
-              }}
-              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#475569' }}
-            >복사</button>
-          </div>
-          <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0' }}>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', background: '#f9fafb', borderRadius: '12px', marginBottom: '0.5rem', border: '1px solid #e5e7eb' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
-          {amIHost ? <button onClick={handleStartGame}>게임 시작</button> : <p style={{ fontWeight: '600', color: '#64748b' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
-        </div>
-      )}
-
-      {screen === 'game' && gameState && (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem' }}>
-          <div style={{ display: 'flex', flex: 1, gap: '1rem', minHeight: 0 }}>
-            <div className="game-logs" style={{ flex: 1, overflowY: 'auto' }}>
-              {gameState.logs.map((l, i) => <div key={i}>{l}</div>)}
-              <div ref={logsEndRef}></div>
+        {screen === 'home' && (
+          <div>
+            <h1>MULTY-CARD</h1>
+            <p>친구와 실시간으로 대결하세요</p>
+            <div style={{ maxWidth: '320px', margin: '0 auto' }}>
+              <input type="text" placeholder="사용할 닉네임" value={nickname} onChange={e => setNickname(e.target.value)} />
+              <button onClick={handleCreateRoom} style={{ marginBottom: '1rem' }}>새 방 만들기</button>
+              <div className="divider"><span className="divider-text">또는</span></div>
+              <input type="text" placeholder="방 코드 (Host ID)" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
+              <button onClick={handleJoinRoom} style={{ background: '#64748b' }}>방 참가하기</button>
             </div>
-            <div style={{ width: '280px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
-              <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem', flexShrink: 0 }}>MULTY-CARD 현황</h2>
-              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingRight: '5px' }}>
-                {gameState.players.map(p => {
-                  const isSelected = targetPlayerId === p.id;
-                  const canSelect = (gameState.phase === 'main' && isMyTurn) || (gameState.phase === 'defense' && isTarget && isOrbitShiftSelected);
-                  return (
-                    <div key={p.id} className={`player-item ${isSelected ? 'target-selected' : ''}`} 
-                      onClick={() => canSelect && p.hp > 0 && setTargetPlayerId(p.id)} 
-                      style={{ opacity: p.hp <= 0 ? 0.4 : 1, position: 'relative' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 'bold' }}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</span>
-                        <span>{p.hp} HP</span>
-                      </div>
-                      {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 ({p.shockDuration})</div>}
-                      {p.status === 'flash' && <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 'bold' }}>✨ 섬광 ({p.flashDuration})</div>}
-                      {p.status === 'burn' && <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>🔥 화상 ({p.burnDuration})</div>}
-                      <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
-                    </div>
-                  );
-                })}
+          </div>
+        )}
+
+        {screen === 'lobby' && (
+          <div>
+            <h1>MULTY-CARD 대기실</h1>
+            <p style={{ marginBottom: '0.5rem' }}>내 방 코드:</p>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '0.75rem', borderRadius: '12px', marginBottom: '2rem' }}>
+              <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode}</span>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(displayRoomCode);
+                  alert('코드가 복사되었습니다!');
+                }}
+                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#475569' }}
+              >복사</button>
+            </div>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0' }}>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', background: '#f9fafb', borderRadius: '12px', marginBottom: '0.5rem', border: '1px solid #e5e7eb' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
+            {amIHost ? <button onClick={handleStartGame}>게임 시작</button> : <p style={{ fontWeight: '600', color: '#64748b' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
+          </div>
+        )}
+
+        {screen === 'game' && gameState && (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem' }}>
+            <div style={{ display: 'flex', flex: 1, gap: '1rem', minHeight: 0 }}>
+              <div className="game-logs" style={{ flex: 1, overflowY: 'auto' }}>
+                {gameState.logs.map((l, i) => <div key={i}>{l}</div>)}
+                <div ref={logsEndRef}></div>
               </div>
-              <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {isMyTurn && myState?.hp > 0 && gameState.phase === 'main' && (
-                  <>
-                    <button disabled={myState.status === 'shock'} onClick={() => {
-                      if (!targetPlayerId && !isDarkCloudSelected) return alert('타겟을 선택하세요!');
-                      if (selectedCardUids.length === 0) return alert('카드를 선택하세요!');
-                      const data = { targetId: targetPlayerId, cardUids: selectedCardUids };
-                      if (amIHost) processAttack(myPeerId, data); else sendToHost({ type: 'ACTION_ATTACK', data });
+              <div style={{ width: '280px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+                <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem', flexShrink: 0 }}>MULTY-CARD 현황</h2>
+                <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingRight: '5px' }}>
+                  {gameState.players.map(p => {
+                    const isSelected = targetPlayerId === p.id;
+                    const canSelect = (gameState.phase === 'main' && isMyTurn) || (gameState.phase === 'defense' && isTarget && isOrbitShiftSelected);
+                    return (
+                      <div key={p.id} className={`player-item ${isSelected ? 'target-selected' : ''}`} 
+                        onClick={() => canSelect && p.hp > 0 && setTargetPlayerId(p.id)} 
+                        style={{ opacity: p.hp <= 0 ? 0.4 : 1, position: 'relative' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: 'bold' }}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</span>
+                          <span>{p.hp} HP</span>
+                        </div>
+                        {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 ({p.shockDuration})</div>}
+                        {p.status === 'flash' && <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 'bold' }}>✨ 섬광 ({p.flashDuration})</div>}
+                        {p.status === 'burn' && <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>🔥 화상 ({p.burnDuration})</div>}
+                        <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {isMyTurn && myState?.hp > 0 && gameState.phase === 'main' && (
+                    <>
+                      <button disabled={myState.status === 'shock'} onClick={() => {
+                        if (!targetPlayerId && !isDarkCloudSelected) return alert('타겟을 선택하세요!');
+                        if (selectedCardUids.length === 0) return alert('카드를 선택하세요!');
+                        const data = { targetId: targetPlayerId, cardUids: selectedCardUids };
+                        if (amIHost) processAttack(myPeerId, data); else sendToHost({ type: 'ACTION_ATTACK', data });
+                        setSelectedCardUids([]); setTargetPlayerId(null);
+                      }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem' }}>{isDarkCloudSelected ? '먹구름 시전' : '공격하기'}</button>
+                      <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem' }}>턴 넘기기</button>
+                    </>
+                  )}
+                  {gameState.phase === 'defense' && isTarget && (
+                    <button onClick={() => {
+                      const data = { cardUids: selectedCardUids, newTargetId: targetPlayerId };
+                      if (amIHost) processDefense(myPeerId, data); else sendToHost({ type: 'ACTION_DEFENSE', data });
                       setSelectedCardUids([]); setTargetPlayerId(null);
-                    }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem' }}>{isDarkCloudSelected ? '먹구름 시전' : '공격하기'}</button>
-                    <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem' }}>턴 넘기기</button>
-                  </>
-                )}
-                {gameState.phase === 'defense' && isTarget && (
-                  <button onClick={() => {
-                    const data = { cardUids: selectedCardUids, newTargetId: targetPlayerId };
-                    if (amIHost) processDefense(myPeerId, data); else sendToHost({ type: 'ACTION_DEFENSE', data });
-                    setSelectedCardUids([]); setTargetPlayerId(null);
-                  }} style={{ background: '#3b82f6', padding: '1rem' }}>{isOrbitShiftSelected ? '궤도변환 실행' : '방어 / 받기'}</button>
-                )}
-                {gameState.phase === 'gameover' && (
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {amIHost ? (
-                      <>
-                        <button onClick={handleRestartGame} style={{ background: '#10b981', flex: 1 }}>다시 하기</button>
-                        <button onClick={handleQuitGame} style={{ background: '#ef4444', flex: 1 }}>종료하기</button>
-                      </>
-                    ) : (
-                      <div style={{ textAlign: 'center', width: '100%', padding: '0.5rem', background: '#f8fafc', borderRadius: '8px', color: '#64748b', fontSize: '0.9rem' }}>
-                        호스트의 결정을 기다리고 있습니다...
-                      </div>
-                    )}
-                  </div>
-                )}
+                    }} style={{ background: '#3b82f6', padding: '1rem' }}>{isOrbitShiftSelected ? '궤도변환 실행' : '방어 / 받기'}</button>
+                  )}
+                  {gameState.phase === 'gameover' && (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {amIHost ? (
+                        <>
+                          <button onClick={handleRestartGame} style={{ background: '#10b981', flex: 1 }}>다시 하기</button>
+                          <button onClick={handleQuitGame} style={{ background: '#ef4444', flex: 1 }}>종료하기</button>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: 'center', width: '100%', padding: '0.5rem', background: '#f8fafc', borderRadius: '8px', color: '#64748b', fontSize: '0.9rem' }}>
+                          호스트의 결정을 기다리고 있습니다...
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+            <div className="hand-container" ref={handRef} onMouseDown={handleMouseDown} onMouseLeave={handleMouseLeave} onMouseUp={handleMouseUp} onMouseMove={handleMouseMove} style={{ opacity: myState?.hp <= 0 ? 0.5 : 1 }}>
+              {myState?.hand.map(c => (
+                <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} onClick={() => dragDistance.current < 5 && toggleCardSelection(c.uid)} draggable={false}>
+                  <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</div>
+                  <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: '5px' }}>{c.description}</div>
+                  <div style={{ fontWeight: 'bold', borderTop: '1px solid #e5e7eb', paddingTop: '5px', color: 'var(--text-main)' }}>{c.value > 0 ? c.value : '-'}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="hand-container" ref={handRef} onMouseDown={handleMouseDown} onMouseLeave={handleMouseLeave} onMouseUp={handleMouseUp} onMouseMove={handleMouseMove} style={{ opacity: myState?.hp <= 0 ? 0.5 : 1 }}>
-            {myState?.hand.map(c => (
-              <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} onClick={() => dragDistance.current < 5 && toggleCardSelection(c.uid)} draggable={false}>
-                <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
-                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</div>
-                <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: '5px' }}>{c.description}</div>
-                <div style={{ fontWeight: 'bold', borderTop: '1px solid #e5e7eb', paddingTop: '5px', color: 'var(--text-main)' }}>{c.value > 0 ? c.value : '-'}</div>
-              </div>
-            ))}
-          </div>
+        )}
+        
+        {/* 하단 버전 정보 */}
+        <div style={{ position: 'fixed', bottom: '5px', right: '10px', fontSize: '0.6rem', color: '#9ca3af' }}>
+          v1.1.0 - Stability & Syntax Fix
         </div>
-      )}
-      
-      {/* 하단 버전 정보 */}
-      <div style={{ position: 'fixed', bottom: '5px', right: '10px', fontSize: '0.6rem', color: '#9ca3af' }}>
-        v1.0.8 - AOE Fix & Connection Stabilized
       </div>
     </div>
   );
