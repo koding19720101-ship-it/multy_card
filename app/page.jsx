@@ -346,9 +346,33 @@ export default function Home() {
   };
   
   const handleJoinRoom = () => {
-    if (!nickname.trim() || !roomCode.trim()) return alert('닉네임과 방 코드를 입력해주세요!');
-    if (!socket) return alert('서버와 연결되지 않았습니다.');
-    socket.emit('joinRoom', { code: roomCode.trim(), nickname, peerId: myPeerId });
+    const trimmedCode = roomCode.trim();
+    if (!nickname.trim() || !trimmedCode) return alert('닉네임과 방 코드를 입력해주세요!');
+
+    // 4자리 코드인 경우 소켓 서버를 통해 입장 시도 (로컬 환경)
+    if (trimmedCode.length <= 6) {
+      if (!socket || !socket.connected) {
+        return alert('서버와 연결되지 않았습니다. 로컬 서버가 켜져 있는지 확인하세요.');
+      }
+      console.log('소켓 서버를 통해 방 참가 시도:', trimmedCode);
+      socket.emit('joinRoom', { code: trimmedCode, nickname, peerId: myPeerId });
+    } 
+    // 긴 코드(PeerID)인 경우 직접 P2P 연결 시도 (Vercel/Direct 환경)
+    else {
+      if (!peerRef.current) return alert('PeerJS 서버와 연결 중입니다. 잠시 후 다시 시도하세요.');
+      
+      console.log('직접 P2P 연결 시도:', trimmedCode);
+      const c = peerRef.current.connect(trimmedCode, { metadata: { nickname } });
+      setupConnection(c);
+      c.on('open', () => {
+        console.log('호스트에게 참가 요청 전송 중...');
+        c.send({ type: 'JOIN_REQUEST', nickname });
+      });
+      c.on('error', (err) => {
+        console.error('P2P 연결 실패:', err);
+        alert('방 참가에 실패했습니다. 코드를 확인해 주세요.');
+      });
+    }
   };
   
   const handleStartGame = () => {
