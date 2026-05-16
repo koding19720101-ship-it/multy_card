@@ -20,13 +20,54 @@ export default function Home() {
   const gameStateRef = useRef(null);
   const connectionsRef = useRef({}); 
   const hostConnRef = useRef(null);
-
-  const myStreamRef = useRef(null);
-  const audioContainerRef = useRef(null);
-  const logsEndRef = useRef(null);
+  const scrollContainerRef = useRef(null); // 드래그 스크롤용 리프
 
   useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
+  // 마우스 드래그 스크롤 구현
+  useEffect(() => {
+    const slider = scrollContainerRef.current;
+    if (!slider) return;
+
+    let isDown = false;
+    let startX;
+    let scrollLeft;
+
+    const handleMouseDown = (e) => {
+      isDown = true;
+      slider.classList.add('active');
+      startX = e.pageX - slider.offsetLeft;
+      scrollLeft = slider.scrollLeft;
+    };
+    const handleMouseLeave = () => {
+      isDown = false;
+      slider.classList.remove('active');
+    };
+    const handleMouseUp = () => {
+      isDown = false;
+      slider.classList.remove('active');
+    };
+    const handleMouseMove = (e) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - slider.offsetLeft;
+      const walk = (x - startX) * 2; // 스크롤 속도
+      slider.scrollLeft = scrollLeft - walk;
+    };
+
+    slider.addEventListener('mousedown', handleMouseDown);
+    slider.addEventListener('mouseleave', handleMouseLeave);
+    slider.addEventListener('mouseup', handleMouseUp);
+    slider.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      slider.removeEventListener('mousedown', handleMouseDown);
+      slider.removeEventListener('mouseleave', handleMouseLeave);
+      slider.removeEventListener('mouseup', handleMouseUp);
+      slider.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [screen, gameState]);
 
   const CARD_TYPES = [
     { id: 'longsword', name: '롱소드', type: 'attack', value: 5, description: '가장 기본적인\n날카로운 검', icon: '⚔️' },
@@ -171,16 +212,14 @@ export default function Home() {
     
     let finalDamage = Math.max(0, attack.damage - totalDefense);
     
-    // 블랙홀 특수 효과 (상대방 반격 및 카드 교체)
     if (hasBlackHole && finalDamage > 0) {
       const attacker = newState.players.find(p => p.id === attack.attackerId);
       if (attacker) {
         attacker.hp = Math.max(0, attacker.hp - 100);
         newState.logs.push(`🕳️ ${defender.nickname}님이 블랙홀 시전! 공격자 ${attacker.nickname}에게 100의 피해!`);
-        if (attacker.hp <= 0) newState.logs.push(`💀 ${attacker.nickname}님이 블랙홀에 소멸되었습니다.`);
       }
       newState.players.forEach(p => p.hand = Array.from({ length: 10 }, getRandomCard));
-      newState.logs.push(`🌀 시공간이 뒤틀리며 모두의 카드가 교체되었습니다!`);
+      newState.logs.push(`🌀 모두의 카드가 교체되었습니다!`);
     }
 
     defender.hp = Math.max(0, defender.hp - finalDamage);
@@ -190,7 +229,6 @@ export default function Home() {
       const attacker = newState.players.find(p => p.id === attack.attackerId);
       if (attacker) attacker.hp = Math.max(0, attacker.hp - finalDamage);
     }
-    if (defender.hp <= 0) newState.logs.push(`💀 ${defender.nickname}님이 사망하셨습니다!`);
 
     const originalAttacker = newState.players.find(p => p.id === attack.attackerId);
     if (originalAttacker) while (originalAttacker.hand.length < 10) originalAttacker.hand.push(getRandomCard());
@@ -267,7 +305,7 @@ export default function Home() {
           <h1>MULTY-CARD 대기실</h1>
           <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>내 코드: <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{myPeerId}</span></p>
           <ul>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
-          {amIHost ? <button onClick={handleStartGame} style={{ marginTop: '1rem' }}>게임 시작</button> : <p style={{ marginTop: '1rem' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
+          {amIHost ? <button onClick={handleStartGame} style={{ marginTop: '1rem' }}>게임 시작</button> : <p style={{ marginTop: '1rem' }}>호스트 대기 중...</p>}
         </div>
       )}
 
@@ -289,10 +327,9 @@ export default function Home() {
                       onClick={() => canSelect && p.hp > 0 && setTargetPlayerId(p.id)} 
                       style={{ opacity: p.hp <= 0 ? 0.4 : 1, position: 'relative' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 'bold' }}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</span>
+                        <span style={{ fontWeight: 'bold' }}>{p.nickname}</span>
                         <span>{p.hp} HP</span>
                       </div>
-                      {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 상태</div>}
                       <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
                     </div>
                   );
@@ -307,8 +344,8 @@ export default function Home() {
                       const data = { targetId: targetPlayerId, cardUids: selectedCardUids };
                       if (amIHost) processAttack(myPeerId, data); else sendToHost({ type: 'ACTION_ATTACK', data });
                       setSelectedCardUids([]); setTargetPlayerId(null);
-                    }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem', fontSize: '1.1rem' }}>{isDarkCloudSelected ? '먹구름 시전' : '공격하기'}</button>
-                    <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem', fontSize: '1.1rem' }}>턴 넘기기</button>
+                    }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem' }}>{isDarkCloudSelected ? '먹구름 시전' : '공격하기'}</button>
+                    <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem' }}>턴 넘기기</button>
                   </>
                 )}
                 {gameState.phase === 'defense' && isTarget && (
@@ -316,21 +353,25 @@ export default function Home() {
                     const data = { cardUids: selectedCardUids, newTargetId: targetPlayerId };
                     if (amIHost) processDefense(myPeerId, data); else sendToHost({ type: 'ACTION_DEFENSE', data });
                     setSelectedCardUids([]); setTargetPlayerId(null);
-                  }} style={{ background: '#3b82f6', padding: '1rem', fontSize: '1.1rem' }}>{isOrbitShiftSelected ? '궤도변환 실행' : '방어 / 받기'}</button>
+                  }} style={{ background: '#3b82f6', padding: '1rem' }}>방어 / 받기</button>
                 )}
-                {gameState.phase === 'gameover' && <button onClick={() => window.location.reload()} style={{ padding: '1rem' }}>다시 하기</button>}
               </div>
             </div>
           </div>
-          <div className="hand-container" style={{ opacity: myState?.hp <= 0 ? 0.5 : 1, height: '240px', flexShrink: 0, marginTop: '1rem' }}>
+          
+          {/* 드래그 가능 핸드 컨테이너 */}
+          <div 
+            ref={scrollContainerRef}
+            className="hand-container" 
+            style={{ opacity: myState?.hp <= 0 ? 0.5 : 1 }}
+          >
             {myState?.hand.map(c => (
               <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} 
-                onClick={() => toggleCardSelection(c.uid)}
-                style={{ height: '200px', minWidth: '140px', display: 'flex', flexDirection: 'column' }}>
+                onClick={() => toggleCardSelection(c.uid)}>
                 <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
-                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text)' }}>{c.name}</div>
-                <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: '5px' }}>{c.description}</div>
-                <div style={{ fontWeight: 'bold', borderTop: '1px solid var(--border)', paddingTop: '5px', color: 'var(--text)' }}>{c.value > 0 ? c.value : '-'}</div>
+                <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{c.name}</div>
+                <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)' }}>{c.description}</div>
+                <div style={{ fontWeight: 'bold', borderTop: '1px solid var(--border)', paddingTop: '5px' }}>{c.value > 0 ? c.value : '-'}</div>
               </div>
             ))}
           </div>
