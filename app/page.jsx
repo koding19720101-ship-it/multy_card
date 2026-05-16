@@ -110,7 +110,6 @@ export default function Home() {
     const attacker = newState.players.find(p => p.id === attackerId);
     if (attacker.status === 'shock') return;
 
-    // 먹구름(AOE)
     const darkCloud = attacker.hand.find(c => c.uid === cardUids[0] && c.id === 'dark_cloud');
     if (darkCloud) {
       newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전!`);
@@ -132,21 +131,18 @@ export default function Home() {
     const totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
     attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
     
-    // 자기 자신 공격 시 특수 로직
     if (attackerId === targetId) {
       attacker.hp = Math.max(0, attacker.hp - totalDamage);
-      newState.logs.push(`💥 ${attacker.nickname}님이 자기 자신을 공격! ${totalDamage} 피해를 입고 턴이 종료됩니다.`);
+      newState.logs.push(`💥 ${attacker.nickname}님이 자기 자신을 공격! ${totalDamage} 피해.`);
       if (attacker.hp <= 0) newState.logs.push(`💀 ${attacker.nickname}님이 자폭하셨습니다.`);
       while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
-      nextTurn(newState);
-      setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
+      nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
       return;
     }
 
     newState.currentAttack = { attackerId, attackerName: attacker.nickname, targetId, targetName: target.nickname, damage: totalDamage, hasDoubleEdged: usedCards.some(c => c.id === 'double_edged') };
     newState.phase = 'defense';
     newState.logs.push(`${attacker.nickname} ⚔️ ${target.nickname} (공격력 ${totalDamage})`);
-    
     setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
   };
 
@@ -187,7 +183,6 @@ export default function Home() {
       const attacker = newState.players.find(p => p.id === attack.attackerId);
       if (attacker) attacker.hp = Math.max(0, attacker.hp - finalDamage);
     }
-
     if (defender.hp <= 0) newState.logs.push(`💀 ${defender.nickname}님이 사망하셨습니다!`);
 
     const originalAttacker = newState.players.find(p => p.id === attack.attackerId);
@@ -224,33 +219,20 @@ export default function Home() {
     setGameState(s); setScreen('game'); broadcast({ type: 'GAME_START', gameState: s, players });
   };
 
-  const myState = gameState?.players.find(p => p.id === myPeerId);
-  const isMyTurn = gameState && gameState.players[gameState.turnIndex].id === myPeerId;
-  const isTarget = gameState?.currentAttack?.targetId === myPeerId;
-
-  // 카드 선택 로직 강화
   const toggleCardSelection = (uid) => {
     const card = myState?.hand.find(c => c.uid === uid);
     if (!card) return;
-
     setSelectedCardUids(prev => {
-      // 1. 선택하려는 카드가 범위 공격(AOE)인 경우
-      if (card.isAOE) {
-        if (prev.includes(uid)) return []; // 이미 선택된 거 해제
-        return [uid]; // 다른 모든 선택 해제하고 이것만 선택
-      }
-      
-      // 2. 이미 범위 공격 카드가 선택되어 있는 상태에서 일반 카드 선택 시
+      if (card.isAOE) return prev.includes(uid) ? [] : [uid];
       const hasAOESelected = prev.some(id => myState?.hand.find(c => c.uid === id)?.isAOE);
-      if (hasAOESelected) {
-        return [uid]; // 기존 AOE 해제하고 현재 일반 카드 선택
-      }
-
-      // 3. 일반적인 다중 선택
+      if (hasAOESelected) return [uid];
       return prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid];
     });
   };
 
+  const myState = gameState?.players.find(p => p.id === myPeerId);
+  const isMyTurn = gameState && gameState.players[gameState.turnIndex].id === myPeerId;
+  const isTarget = gameState?.currentAttack?.targetId === myPeerId;
   const selectedCards = selectedCardUids.map(uid => myState?.hand.find(c => c.uid === uid));
   const isOrbitShiftSelected = selectedCards.some(c => c?.id === 'orbit_shift');
   const isDarkCloudSelected = selectedCards.some(c => c?.isAOE);
@@ -263,21 +245,28 @@ export default function Home() {
       `}</style>
 
       {screen === 'home' && (
-        <div style={{ padding: '2rem' }}>
-          <h1>⚡ P2P CARD BATTLE</h1>
-          <input type="text" placeholder="닉네임" value={nickname} onChange={e => setNickname(e.target.value)} />
-          <button onClick={handleCreateRoom}>방 만들기</button>
-          <input type="text" placeholder="호스트 ID" style={{ marginTop: '1rem' }} value={roomCode} onChange={e => setRoomCode(e.target.value)} />
-          <button onClick={handleJoinRoom}>방 참가하기</button>
+        <div style={{ padding: '3rem 1rem' }}>
+          <h1 style={{ fontSize: '2.5rem', letterSpacing: '-0.05em' }}>⚡ P2P CARD BATTLE</h1>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>친구와 실시간으로 대결하세요</p>
+          <div style={{ maxWidth: '320px', margin: '0 auto' }}>
+            <input type="text" placeholder="사용할 닉네임" value={nickname} onChange={e => setNickname(e.target.value)} />
+            <button onClick={handleCreateRoom} style={{ marginBottom: '1rem' }}>새 방 만들기</button>
+            <div style={{ borderTop: '1px solid var(--border)', margin: '1.5rem 0', position: 'relative' }}>
+              <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: '#fff', padding: '0 10px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>또는</span>
+            </div>
+            <input type="text" placeholder="방 코드 (Host ID)" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
+            <button onClick={handleJoinRoom} style={{ background: '#64748b' }}>방 참가하기</button>
+          </div>
         </div>
       )}
 
       {screen === 'lobby' && (
-        <>
-          <h1>대기실 (ID: {myPeerId})</h1>
-          <ul>{players.map(p => <li key={p.id}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</li>)}</ul>
-          {amIHost ? <button onClick={handleStartGame}>게임 시작</button> : <p>호스트 대기 중...</p>}
-        </>
+        <div style={{ padding: '2rem' }}>
+          <h1>대기실</h1>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>내 코드: <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{myPeerId}</span></p>
+          <ul>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
+          {amIHost ? <button onClick={handleStartGame} style={{ marginTop: '1rem' }}>게임 시작</button> : <p style={{ marginTop: '1rem' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
+        </div>
       )}
 
       {screen === 'game' && gameState && (
@@ -288,7 +277,7 @@ export default function Home() {
               <div ref={logsEndRef}></div>
             </div>
             <div style={{ width: '280px', display: 'flex', flexDirection: 'column' }}>
-              <h2>참가자</h2>
+              <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>참가자 현황</h2>
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {gameState.players.map(p => {
                   const isSelected = targetPlayerId === p.id;
@@ -296,27 +285,26 @@ export default function Home() {
                   return (
                     <div key={p.id} className={`player-item ${isSelected ? 'target-selected' : ''}`} 
                       onClick={() => canSelect && p.hp > 0 && setTargetPlayerId(p.id)} 
-                      style={{ opacity: p.hp <= 0 ? 0.4 : 1, border: isSelected ? '2px solid #ef4444' : '2px solid transparent' }}>
-                      <div style={{ fontWeight: 'bold' }}>{p.nickname} {p.hp <= 0 ? '💀' : ''} {p.id === myPeerId ? '(나)' : ''}</div>
-                      {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#fbbf24' }}>⚡ 감전됨</div>}
+                      style={{ opacity: p.hp <= 0 ? 0.4 : 1, position: 'relative' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 'bold' }}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</span>
+                        <span>{p.hp} HP</span>
+                      </div>
+                      {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 상태 (행동 불가)</div>}
                       <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
                     </div>
                   );
                 })}
               </div>
-              <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {isMyTurn && myState?.hp > 0 && (
                   <>
                     <button disabled={myState.status === 'shock'} onClick={() => {
                       const data = { targetId: targetPlayerId, cardUids: selectedCardUids };
                       if (amIHost) processAttack(myPeerId, data); else sendToHost({ type: 'ACTION_ATTACK', data });
                       setSelectedCardUids([]); setTargetPlayerId(null);
-                    }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem', fontSize: '1.1rem' }}>
-                      {isDarkCloudSelected ? '먹구름 시전' : '공격하기'}
-                    </button>
-                    <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem', fontSize: '1.1rem' }}>
-                      턴 넘기기
-                    </button>
+                    }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem', fontSize: '1.1rem' }}>{isDarkCloudSelected ? '먹구름 시전' : '공격하기'}</button>
+                    <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem', fontSize: '1.1rem' }}>턴 넘기기</button>
                   </>
                 )}
                 {gameState.phase === 'defense' && isTarget && (
@@ -324,9 +312,7 @@ export default function Home() {
                     const data = { cardUids: selectedCardUids, newTargetId: targetPlayerId };
                     if (amIHost) processDefense(myPeerId, data); else sendToHost({ type: 'ACTION_DEFENSE', data });
                     setSelectedCardUids([]); setTargetPlayerId(null);
-                  }} style={{ background: '#3b82f6', padding: '1rem', fontSize: '1.1rem' }}>
-                    {isOrbitShiftSelected ? '궤도변환 실행' : '방어 / 받기'}
-                  </button>
+                  }} style={{ background: '#3b82f6', padding: '1rem', fontSize: '1.1rem' }}>{isOrbitShiftSelected ? '궤도변환 실행' : '방어 / 받기'}</button>
                 )}
                 {gameState.phase === 'gameover' && <button onClick={() => window.location.reload()} style={{ padding: '1rem' }}>다시 하기</button>}
               </div>
@@ -338,9 +324,9 @@ export default function Home() {
                 onClick={() => toggleCardSelection(c.uid)}
                 style={{ height: '180px', minWidth: '130px', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
-                <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{c.name}</div>
+                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text)' }}>{c.name}</div>
                 <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: '5px' }}>{c.description}</div>
-                <div style={{ fontWeight: 'bold', borderTop: '1px solid #334155', paddingTop: '5px' }}>{c.value > 0 ? c.value : '-'}</div>
+                <div style={{ fontWeight: 'bold', borderTop: '1px solid var(--border)', paddingTop: '5px', color: 'var(--text)' }}>{c.value > 0 ? c.value : '-'}</div>
               </div>
             ))}
           </div>
