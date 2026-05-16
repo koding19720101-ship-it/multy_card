@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { io } from 'socket.io-client';
 
 export default function Home() {
   const [peer, setPeer] = useState(null);
@@ -15,6 +16,8 @@ export default function Home() {
   const [gameState, setGameState] = useState(null);
   const [selectedCardUids, setSelectedCardUids] = useState([]);
   const [targetPlayerId, setTargetPlayerId] = useState(null);
+  const [socket, setSocket] = useState(null);
+  const [displayRoomCode, setDisplayRoomCode] = useState('');
 
   const playersRef = useRef([]);
   const gameStateRef = useRef(null);
@@ -84,8 +87,39 @@ export default function Home() {
 
       setPeer(newPeer);
     });
-    return () => { if (peer) peer.destroy(); };
+
+    // 소켓 연결
+    const newSocket = io(window.location.hostname === 'localhost' ? 'http://localhost:3001' : `http://${window.location.hostname}:3001`);
+    setSocket(newSocket);
+
+    newSocket.on('roomCreated', ({ roomId }) => {
+      setDisplayRoomCode(roomId);
+    });
+
+    newSocket.on('roomJoined', ({ code, hostPeerId }) => {
+      setDisplayRoomCode(code);
+      console.log('Room joined, connecting to host peer:', hostPeerId);
+      const c = peerRef.current.connect(hostPeerId, { metadata: { nickname: nicknameRef.current } });
+      setupConnection(c);
+      c.on('open', () => {
+        c.send({ type: 'JOIN_REQUEST', nickname: nicknameRef.current });
+      });
+    });
+
+    newSocket.on('errorMsg', (msg) => {
+      alert(msg);
+    });
+
+    return () => { 
+      if (peer) peer.destroy(); 
+      if (newSocket) newSocket.disconnect();
+    };
   }, []);
+
+  const peerRef = useRef(null);
+  const nicknameRef = useRef('');
+  useEffect(() => { peerRef.current = peer; }, [peer]);
+  useEffect(() => { nicknameRef.current = nickname; }, [nickname]);
 
   useEffect(() => {
     if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -164,6 +198,10 @@ export default function Home() {
         break;
       case 'ACTION_SKIP':
         if (gameStateRef.current) processSkip(senderPeerId);
+        break;
+      case 'GAME_QUIT':
+        alert('호스트가 방을 종료했습니다.');
+        window.location.reload();
         break;
     }
   };
@@ -257,7 +295,25 @@ export default function Home() {
   };
 
   const processSkip = (playerId) => { const newState = JSON.parse(JSON.stringify(gameStateRef.current)); const player = newState.players.find(p => p.id === playerId); if (player.status === 'shock') { player.status = null; newState.logs.push(`⚡ ${player.nickname}님의 감전이 해제되었습니다.`); } nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState }); };
-  const nextTurn = (state) => { state.turnIndex = (state.turnIndex + 1) % state.players.length; let s = 0; while (state.players[state.turnIndex].hp <= 0 && s < state.players.length) { state.turnIndex = (state.turnIndex + 1) % state.players.length; s++; } if (state.players.filter(p => p.hp > 0).length <= 1) { state.logs.push(`🏆 승리: ${state.players.find(p => p.hp > 0)?.nickname || '없음'}`); state.phase = 'gameover'; } else { state.logs.push(`>>> ${state.players[state.turnIndex].nickname}님의 턴 <<<`); } };
+  const nextTurn = (state) => {
+    state.turnIndex = (state.turnIndex + 1) % state.players.length;
+    let s = 0;
+    while (state.players[state.turnIndex].hp <= 0 && s < state.players.length) {
+      state.turnIndex = (state.turnIndex + 1) % state.players.length;
+      s++;
+    }
+    const alivePlayers = state.players.filter(p => p.hp > 0);
+    if (alivePlayers.length <= 1) {
+      if (alivePlayers.length === 1) {
+        state.logs.push(`🏆 승리: ${alivePlayers[0].nickname}`);
+      } else {
+        state.logs.push(`🤝 무승부! 모두가 전멸했습니다.`);
+      }
+      state.phase = 'gameover';
+    } else {
+      state.logs.push(`>>> ${state.players[state.turnIndex].nickname}님의 턴 <<<`);
+    }
+  };
 
   const handleCreateRoom = () => {
     if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
@@ -265,31 +321,45 @@ export default function Home() {
     setAmIHost(true);
     setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]);
     setScreen('lobby');
+    socket.emit('createRoom', { nickname, peerId: myPeerId });
   };
   
   const handleJoinRoom = () => {
     if (!nickname.trim() || !roomCode.trim()) return alert('닉네임과 방 코드를 입력해주세요!');
-    if (!peer) return alert('PeerJS가 초기화되지 않았습니다.');
-    
-    console.log('Attempting to connect to host:', roomCode.trim());
-    const c = peer.connect(roomCode.trim(), {
-      metadata: { nickname } // 메타데이터로 닉네임 전달 시도
-    });
-    
-    setupConnection(c);
-    
-    c.on('open', () => {
-      console.log('Connection to host opened! Sending join request...');
-      c.send({ type: 'JOIN_REQUEST', nickname });
-    });
+    if (!socket) return alert('서버와 연결되지 않았습니다.');
+    socket.emit('joinRoom', { code: roomCode.trim(), nickname, peerId: myPeerId });
   };
   
   const handleStartGame = () => {
     if (players.length < 2) return alert('최소 2명의 플레이어가 필요합니다!');
-    const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard) })), currentAttack: null, logs: ['전투 시작!'] };
+    const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard), hp: 100, status: null })), currentAttack: null, logs: ['전투 시작!'] };
     setGameState(s);
     setScreen('game');
     broadcast({ type: 'GAME_START', gameState: s, players });
+  };
+
+  const handleRestartGame = () => {
+    const s = { 
+      turnIndex: 0, 
+      phase: 'main', 
+      players: gameState.players.map(p => ({ 
+        ...p, 
+        hand: Array.from({ length: 10 }, getRandomCard), 
+        hp: 100, 
+        status: null 
+      })), 
+      currentAttack: null, 
+      logs: ['새로운 라운드가 시작되었습니다!'] 
+    };
+    setGameState(s);
+    broadcast({ type: 'GAME_STATE_UPDATE', gameState: s });
+  };
+
+  const handleQuitGame = () => {
+    if (confirm('방을 종료하시겠습니까? 모든 플레이어가 퇴장됩니다.')) {
+      broadcast({ type: 'GAME_QUIT' });
+      window.location.reload();
+    }
   };
 
   const toggleCardSelection = (uid) => {
@@ -334,12 +404,12 @@ export default function Home() {
       {screen === 'lobby' && (
         <div>
           <h1>MULTY-CARD 대기실</h1>
-          <p style={{ marginBottom: '0.5rem' }}>내 코드:</p>
+          <p style={{ marginBottom: '0.5rem' }}>내 방 코드:</p>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '0.75rem', borderRadius: '12px', marginBottom: '2rem' }}>
-            <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.1rem', wordBreak: 'break-all' }}>{myPeerId}</span>
+            <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode}</span>
             <button 
               onClick={() => {
-                navigator.clipboard.writeText(myPeerId);
+                navigator.clipboard.writeText(displayRoomCode);
                 alert('코드가 복사되었습니다!');
               }}
               style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#475569' }}
@@ -397,7 +467,20 @@ export default function Home() {
                     setSelectedCardUids([]); setTargetPlayerId(null);
                   }} style={{ background: '#3b82f6', padding: '1rem' }}>{isOrbitShiftSelected ? '궤도변환 실행' : '방어 / 받기'}</button>
                 )}
-                {gameState.phase === 'gameover' && <button onClick={() => window.location.reload()}>다시 하기</button>}
+                {gameState.phase === 'gameover' && (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {amIHost ? (
+                      <>
+                        <button onClick={handleRestartGame} style={{ background: '#10b981', flex: 1 }}>다시 하기</button>
+                        <button onClick={handleQuitGame} style={{ background: '#ef4444', flex: 1 }}>종료하기</button>
+                      </>
+                    ) : (
+                      <div style={{ textAlign: 'center', width: '100%', padding: '0.5rem', background: '#f8fafc', borderRadius: '8px', color: '#64748b', fontSize: '0.9rem' }}>
+                        호스트의 결정을 기다리고 있습니다...
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

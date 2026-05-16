@@ -27,25 +27,33 @@ const rooms = {};
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('createRoom', (nickname) => {
-    console.log('createRoom called with:', nickname);
-    const roomId = Math.random().toString(36).substring(2, 7).toUpperCase();
-    rooms[roomId] = { host: socket.id, players: [{ id: socket.id, nickname }] };
+  socket.on('createRoom', ({ nickname, peerId }) => {
+    console.log('createRoom called with:', nickname, peerId);
+    const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+    rooms[roomId] = { 
+      host: socket.id, 
+      hostPeerId: peerId,
+      players: [{ id: socket.id, nickname, peerId }] 
+    };
     socket.join(roomId);
-    socket.emit('roomCreated', roomId);
+    socket.emit('roomCreated', { roomId });
     io.to(roomId).emit('updatePlayers', rooms[roomId].players);
   });
 
   socket.on('joinRoom', (data) => {
     console.log('joinRoom called with:', data);
-    const { code, nickname } = data;
-    if (rooms[code]) {
-      if (!rooms[code].players.some(p => p.id === socket.id)) {
-        rooms[code].players.push({ id: socket.id, nickname });
-        socket.join(code);
+    const { code, nickname, peerId } = data;
+    const upperCode = code.toUpperCase();
+    if (rooms[upperCode]) {
+      if (!rooms[upperCode].players.some(p => p.id === socket.id)) {
+        rooms[upperCode].players.push({ id: socket.id, nickname, peerId });
+        socket.join(upperCode);
       }
-      socket.emit('roomJoined', code);
-      io.to(code).emit('updatePlayers', rooms[code].players);
+      socket.emit('roomJoined', { 
+        code: upperCode, 
+        hostPeerId: rooms[upperCode].hostPeerId 
+      });
+      io.to(upperCode).emit('updatePlayers', rooms[upperCode].players);
     } else {
       socket.emit('errorMsg', '방을 찾을 수 없습니다.');
     }
