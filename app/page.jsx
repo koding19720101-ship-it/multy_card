@@ -22,11 +22,12 @@ export default function Home() {
   const hostConnRef = useRef(null);
   const logsEndRef = useRef(null);
 
-  // 드래그 스크롤을 위한 Ref 및 상태
+  // 드래그 스크롤을 위한 Ref
   const handRef = useRef(null);
   const isDragging = useRef(false);
   const startX = useRef(0);
   const scrollLeft = useRef(0);
+  const dragDistance = useRef(0); // 드래그 거리 측정 (클릭 vs 드래그 구분)
 
   useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -115,13 +116,7 @@ export default function Home() {
     const darkCloud = attacker.hand.find(c => c.uid === cardUids[0] && c.id === 'dark_cloud');
     if (darkCloud) {
       newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전!`);
-      newState.players.forEach(p => {
-        if (p.id !== attackerId && p.hp > 0) {
-          p.hp = Math.max(0, p.hp - 5);
-          p.status = 'shock';
-          if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`);
-        }
-      });
+      newState.players.forEach(p => { if (p.id !== attackerId && p.hp > 0) { p.hp = Math.max(0, p.hp - 5); p.status = 'shock'; if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`); } });
       attacker.hand = attacker.hand.filter(c => c.uid !== cardUids[0]);
       while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
       nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
@@ -167,22 +162,10 @@ export default function Home() {
     let finalDamage = Math.max(0, attack.damage - totalDefense);
     if (hasBlackHole && finalDamage > 0) {
       newState.logs.push(`🕳️ 블랙홀 폭발! 모두에게 75의 피해를 입히고 시공간이 뒤틀립니다!`);
-      newState.players.forEach(p => {
-        if (p.hp > 0) {
-          p.hp = Math.max(0, p.hp - 75);
-          p.hand = Array.from({ length: 10 }, getRandomCard);
-          if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 블랙홀에 휩쓸려 사망했습니다.`);
-        }
-      });
+      newState.players.forEach(p => { if (p.hp > 0) { p.hp = Math.max(0, p.hp - 75); p.hand = Array.from({ length: 10 }, getRandomCard); if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 블랙홀에 휩쓸려 사망했습니다.`); } });
       finalDamage = 0; 
-    } else {
-      defender.hp = Math.max(0, defender.hp - finalDamage);
-      newState.logs.push(`${defender.nickname} 🛡️ 방어 ${totalDefense}. 피해 ${finalDamage}.`);
-    }
-    if (attack.hasDoubleEdged && finalDamage > 0) {
-      const attacker = newState.players.find(p => p.id === attack.attackerId);
-      if (attacker) attacker.hp = Math.max(0, attacker.hp - finalDamage);
-    }
+    } else { defender.hp = Math.max(0, defender.hp - finalDamage); newState.logs.push(`${defender.nickname} 🛡️ 방어 ${totalDefense}. 피해 ${finalDamage}.`); }
+    if (attack.hasDoubleEdged && finalDamage > 0) { const attacker = newState.players.find(p => p.id === attack.attackerId); if (attacker) attacker.hp = Math.max(0, attacker.hp - finalDamage); }
     const originalAttacker = newState.players.find(p => p.id === attack.attackerId);
     if (originalAttacker) while (originalAttacker.hand.length < 10) originalAttacker.hand.push(getRandomCard());
     while (defender.hand.length < 10) defender.hand.push(getRandomCard());
@@ -190,21 +173,8 @@ export default function Home() {
     nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
   };
 
-  const processSkip = (playerId) => {
-    const newState = JSON.parse(JSON.stringify(gameStateRef.current));
-    const player = newState.players.find(p => p.id === playerId);
-    if (player.status === 'shock') { player.status = null; newState.logs.push(`⚡ ${player.nickname}님의 감전이 해제되었습니다.`); }
-    nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
-  };
-
-  const nextTurn = (state) => {
-    state.turnIndex = (state.turnIndex + 1) % state.players.length;
-    let s = 0; while (state.players[state.turnIndex].hp <= 0 && s < state.players.length) { state.turnIndex = (state.turnIndex + 1) % state.players.length; s++; }
-    if (state.players.filter(p => p.hp > 0).length <= 1) {
-      state.logs.push(`🏆 승리: ${state.players.find(p => p.hp > 0)?.nickname || '없음'}`);
-      state.phase = 'gameover';
-    } else { state.logs.push(`>>> ${state.players[state.turnIndex].nickname}님의 턴 <<<`); }
-  };
+  const processSkip = (playerId) => { const newState = JSON.parse(JSON.stringify(gameStateRef.current)); const player = newState.players.find(p => p.id === playerId); if (player.status === 'shock') { player.status = null; newState.logs.push(`⚡ ${player.nickname}님의 감전이 해제되었습니다.`); } nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState }); };
+  const nextTurn = (state) => { state.turnIndex = (state.turnIndex + 1) % state.players.length; let s = 0; while (state.players[state.turnIndex].hp <= 0 && s < state.players.length) { state.turnIndex = (state.turnIndex + 1) % state.players.length; s++; } if (state.players.filter(p => p.hp > 0).length <= 1) { state.logs.push(`🏆 승리: ${state.players.find(p => p.hp > 0)?.nickname || '없음'}`); state.phase = 'gameover'; } else { state.logs.push(`>>> ${state.players[state.turnIndex].nickname}님의 턴 <<<`); } };
 
   const handleCreateRoom = () => { if (!nickname.trim()) return alert('닉네임을 입력해주세요!'); setAmIHost(true); setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]); setScreen('lobby'); };
   const handleJoinRoom = () => { if (!nickname.trim() || !roomCode.trim()) return alert('닉네임과 방 코드를 입력해주세요!'); const c = peer.connect(roomCode.trim()); setupConnection(c); c.on('open', () => c.send({ type: 'JOIN_REQUEST', nickname })); };
@@ -221,19 +191,22 @@ export default function Home() {
     });
   };
 
-  // 드래그 스크롤 핸들러
+  // 드래그 스크롤 핸들러 (강화)
   const handleMouseDown = (e) => {
     isDragging.current = true;
+    dragDistance.current = 0;
     startX.current = e.pageX - handRef.current.offsetLeft;
     scrollLeft.current = handRef.current.scrollLeft;
+    handRef.current.style.cursor = 'grabbing';
   };
-  const handleMouseLeave = () => { isDragging.current = false; };
-  const handleMouseUp = () => { isDragging.current = false; };
+  const handleMouseLeave = () => { isDragging.current = false; handRef.current.style.cursor = 'grab'; };
+  const handleMouseUp = (e) => { isDragging.current = false; handRef.current.style.cursor = 'grab'; };
   const handleMouseMove = (e) => {
     if (!isDragging.current) return;
     e.preventDefault();
     const x = e.pageX - handRef.current.offsetLeft;
     const walk = (x - startX.current) * 2;
+    dragDistance.current += Math.abs(x - startX.current);
     handRef.current.scrollLeft = scrollLeft.current - walk;
   };
 
@@ -325,11 +298,14 @@ export default function Home() {
             onMouseDown={handleMouseDown}
             onMouseLeave={handleMouseLeave}
             onMouseUp={handleMouseUp}
-            onMouseMove={handleMouseMove}
-            style={{ opacity: myState?.hp <= 0 ? 0.5 : 1, cursor: 'grab' }}>
+            onMouseMove={handleMouseMove}>
             {myState?.hand.map(c => (
               <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} 
-                onClick={() => !isDragging.current && toggleCardSelection(c.uid)}
+                onClick={() => {
+                  // 드래그 중에는 클릭(선택)되지 않도록 임계값 설정
+                  if (dragDistance.current < 5) toggleCardSelection(c.uid);
+                }}
+                draggable={false}
                 style={{ height: '200px', minWidth: '160px', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
                 <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</div>
