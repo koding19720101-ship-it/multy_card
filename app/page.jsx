@@ -38,7 +38,7 @@ export default function Home() {
     { id: 'double_edged', name: '양날검', type: 'attack', value: 8, description: '강력하지만\n사용자도 다침', icon: '🗡️' },
     { id: 'knight_helmet', name: '기사의 투구', type: 'defense', value: 5, description: '기사의 명예가\n담긴 단단한 투구', icon: '🪖' },
     { id: 'dark_cloud', name: '먹구름', type: 'attack', value: 5, description: '모두를 감전시켜\n행동을 제약함', icon: '☁️', isAOE: true },
-    { id: 'black_hole', name: '블랙홀', type: 'defense', value: 0, description: '적중 시 자멸하며\n시공간을 뒤틂', icon: '🕳️' },
+    { id: 'black_hole', name: '블랙홀', type: 'defense', value: 0, description: '적중 시 반격하고\n모든 카드를 교체', icon: '🕳️' },
     { id: 'axe', name: '도끼', type: 'attack', value: 8, description: '매우 위협적인\n투박한 도끼', icon: '🪓' }
   ];
 
@@ -170,10 +170,17 @@ export default function Home() {
     defender.hand = defender.hand.filter(c => !cardUids.includes(c.uid));
     
     let finalDamage = Math.max(0, attack.damage - totalDefense);
+    
+    // 블랙홀 특수 효과 (상대방 반격 및 카드 교체)
     if (hasBlackHole && finalDamage > 0) {
-      newState.logs.push(`🕳️ ${defender.nickname}님이 블랙홀을 열어 100의 피해를 입었습니다!`);
-      finalDamage = 100;
+      const attacker = newState.players.find(p => p.id === attack.attackerId);
+      if (attacker) {
+        attacker.hp = Math.max(0, attacker.hp - 100);
+        newState.logs.push(`🕳️ ${defender.nickname}님이 블랙홀 시전! 공격자 ${attacker.nickname}에게 100의 피해!`);
+        if (attacker.hp <= 0) newState.logs.push(`💀 ${attacker.nickname}님이 블랙홀에 소멸되었습니다.`);
+      }
       newState.players.forEach(p => p.hand = Array.from({ length: 10 }, getRandomCard));
+      newState.logs.push(`🌀 시공간이 뒤틀리며 모두의 카드가 교체되었습니다!`);
     }
 
     defender.hp = Math.max(0, defender.hp - finalDamage);
@@ -239,11 +246,6 @@ export default function Home() {
 
   return (
     <div className={screen === 'game' ? 'game-container' : 'card'}>
-      <style jsx global>{`
-        ::-webkit-scrollbar { display: none; }
-        * { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
-
       {screen === 'home' && (
         <div style={{ padding: '3rem 1rem' }}>
           <h1 style={{ fontSize: '2.5rem', letterSpacing: '-0.05em' }}>MULTY-CARD</h1>
@@ -290,14 +292,13 @@ export default function Home() {
                         <span style={{ fontWeight: 'bold' }}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</span>
                         <span>{p.hp} HP</span>
                       </div>
-                      {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 상태 (행동 불가)</div>}
+                      {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 상태</div>}
                       <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
                     </div>
                   );
                 })}
               </div>
               <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {/* 메인 페이즈(공격 전)에만 버튼 표시 */}
                 {isMyTurn && myState?.hp > 0 && gameState.phase === 'main' && (
                   <>
                     <button disabled={myState.status === 'shock'} onClick={() => {
@@ -310,7 +311,6 @@ export default function Home() {
                     <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem', fontSize: '1.1rem' }}>턴 넘기기</button>
                   </>
                 )}
-                {/* 방어 페이즈에만 방어 버튼 표시 */}
                 {gameState.phase === 'defense' && isTarget && (
                   <button onClick={() => {
                     const data = { cardUids: selectedCardUids, newTargetId: targetPlayerId };
