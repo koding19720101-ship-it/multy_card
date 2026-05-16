@@ -180,7 +180,6 @@ export default function Home() {
           if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 블랙홀에 휩쓸려 사망했습니다.`);
         }
       });
-      // 블랙홀 발동 시 이미 데미지 처리가 끝났으므로 추가 데미지 방지
       finalDamage = 0; 
     } else {
       defender.hp = Math.max(0, defender.hp - finalDamage);
@@ -192,11 +191,9 @@ export default function Home() {
       const attacker = newState.players.find(p => p.id === attack.attackerId);
       if (attacker) attacker.hp = Math.max(0, attacker.hp - finalDamage);
     }
-
     const originalAttacker = newState.players.find(p => p.id === attack.attackerId);
     if (originalAttacker) while (originalAttacker.hand.length < 10) originalAttacker.hand.push(getRandomCard());
     while (defender.hand.length < 10) defender.hand.push(getRandomCard());
-
     newState.currentAttack = null; newState.phase = 'main';
     nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
   };
@@ -220,9 +217,21 @@ export default function Home() {
     } else { state.logs.push(`>>> ${state.players[state.turnIndex].nickname}님의 턴 <<<`); }
   };
 
-  const handleCreateRoom = () => { setAmIHost(true); setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]); setScreen('lobby'); };
-  const handleJoinRoom = () => { const c = peer.connect(roomCode.trim()); setupConnection(c); c.on('open', () => c.send({ type: 'JOIN_REQUEST', nickname })); };
+  const handleCreateRoom = () => { 
+    if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
+    setAmIHost(true); setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]); setScreen('lobby'); 
+  };
+  
+  const handleJoinRoom = () => { 
+    if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
+    if (!roomCode.trim()) return alert('방 코드를 입력해주세요!');
+    const c = peer.connect(roomCode.trim()); 
+    setupConnection(c); 
+    c.on('open', () => c.send({ type: 'JOIN_REQUEST', nickname })); 
+  };
+  
   const handleStartGame = () => {
+    if (players.length < 2) return alert('최소 2명의 플레이어가 필요합니다!');
     const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard) })), currentAttack: null, logs: ['전투 시작!'] };
     setGameState(s); setScreen('game'); broadcast({ type: 'GAME_START', gameState: s, players });
   };
@@ -247,6 +256,11 @@ export default function Home() {
 
   return (
     <div className={screen === 'game' ? 'game-container' : 'card'}>
+      <style jsx global>{`
+        ::-webkit-scrollbar { display: none; }
+        * { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+
       {screen === 'home' && (
         <div style={{ padding: '3rem 1rem' }}>
           <h1 style={{ fontSize: '2.5rem', letterSpacing: '-0.05em' }}>MULTY-CARD</h1>
