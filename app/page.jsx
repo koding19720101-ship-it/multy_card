@@ -52,7 +52,12 @@ export default function Home() {
     { id: 'iron_greaves', name: '철 각반', type: 'defense', value: 4, description: '방어력 4\n단단한 다리 보호대', icon: '🦵', weight: 35 },
     { id: 'iron_shield', name: '철제 방패', type: 'defense', value: 5, description: '방어력 5\n매우 견고한 방패', icon: '🛡️', weight: 25 },
     { id: 'claw', name: '클로', type: 'attack', value: 4, description: '4데미지\n빠르고 날카로운 공격', icon: '💅', weight: 45 },
-    { id: 'god_sword', name: '신의 검', type: 'attack', value: 25, description: '25데미지\n신성한 힘이 깃든 검', icon: '⚡', weight: 2 }
+    { id: 'god_sword', name: '신의 검', type: 'attack', value: 25, description: '25데미지\n신성한 힘이 깃든 검', icon: '⚡', weight: 2 },
+    // 새 카드 추가
+    { id: 'torch', name: '횃불', type: 'attack', value: 2, description: '2데미지, 화상 부여\n5턴간 매턴 2데미지', icon: '🔥', weight: 35 },
+    { id: 'bandage', name: '붕대', type: 'heal', value: 5, description: '체력 5 회복\n선택 대상 치유', icon: '🩹', weight: 40 },
+    { id: 'volcano', name: '화산', type: 'attack', value: 5, description: '자신 제외 모두에게\n5데미지 + 화상 부여', icon: '🌋', isAOE: true, weight: 10 },
+    { id: 'berserk', name: '광폭화', type: 'buff', value: 0, description: '공격 시 1.2배 데미지\n사용 시 턴이 소모되지 않음', icon: '😡', weight: 20 }
   ];
 
   const getRandomCard = () => {
@@ -212,35 +217,62 @@ export default function Home() {
     }
   };
 
-  // 게임 로직들... (변경 없음)
+  // 게임 로직
   const processAttack = (attackerId, { targetId, cardUids }) => {
     const newState = JSON.parse(JSON.stringify(gameStateRef.current));
     const attacker = newState.players.find(p => p.id === attackerId);
     if (!attacker || attacker.status === 'shock') return;
-    const darkCloud = attacker.hand.find(c => c.uid === cardUids[0] && c.id === 'dark_cloud');
-    if (darkCloud) {
-      newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전!`);
-      const aliveOtherPlayersCount = newState.players.filter(p => p.id !== attackerId && p.hp > 0).length;
-      newState.players.forEach(p => { 
-        if (p.id !== attackerId && p.hp > 0) { 
-          p.hp = Math.max(0, p.hp - 5); 
-          p.status = 'shock'; 
-          p.shockDuration = aliveOtherPlayersCount; // 모두가 턴을 다 할 때까지 (살아있는 다른 플레이어 수만큼)
-          if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`); 
-        } 
-      });
-      attacker.hand = attacker.hand.filter(c => c.uid !== cardUids[0]);
-      while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
-      nextTurn(newState); 
-      setGameState(newState); 
-      broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
-      return;
-    }
+
     const usedCards = attacker.hand.filter(c => cardUids.includes(c.uid));
     
-    // 섬광탄 처리
+    // 힐 처리 (붕대)
+    const healCards = usedCards.filter(c => c.type === 'heal');
+    if (healCards.length > 0) {
+      const target = newState.players.find(p => p.id === targetId);
+      if (target) {
+        const totalHeal = healCards.reduce((sum, c) => sum + c.value, 0);
+        target.hp = Math.min(100, target.hp + totalHeal);
+        newState.logs.push(`🩹 ${attacker.nickname}님이 ${target.nickname}님을 치유! +${totalHeal} HP.`);
+        attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
+        while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
+        nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
+        return;
+      }
+    }
+
+    // 특수 카드 및 상태 이상 처리
+    const darkCloud = usedCards.find(c => c.id === 'dark_cloud');
     const flashbang = usedCards.find(c => c.id === 'flashbang');
+    const torch = usedCards.find(c => c.id === 'torch');
+    const volcano = usedCards.find(c => c.id === 'volcano');
+    const berserk = usedCards.find(c => c.id === 'berserk');
     
+    // 광역 카드 처리 (먹구름, 화산)
+    if (darkCloud || volcano) {
+      if (darkCloud) {
+        newState.logs.push(`⚡ ${attacker.nickname}님이 '먹구름' 시전!`);
+        const aliveOtherPlayersCount = newState.players.filter(p => p.id !== attackerId && p.hp > 0).length;
+        newState.players.forEach(p => { 
+          if (p.id !== attackerId && p.hp > 0) { 
+            p.hp = Math.max(0, p.hp - 5); p.status = 'shock'; p.shockDuration = aliveOtherPlayersCount;
+            if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`); 
+          } 
+        });
+      } else if (volcano) {
+        newState.logs.push(`🌋 ${attacker.nickname}님이 '화산' 폭발 시전!`);
+        newState.players.forEach(p => { 
+          if (p.id !== attackerId && p.hp > 0) { 
+            p.hp = Math.max(0, p.hp - 5); p.status = 'burn'; p.burnDuration = 5; 
+            if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 용암에 휩쓸려 사망했습니다.`); 
+          } 
+        });
+      }
+      attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
+      while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
+      nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
+      return;
+    }
+
     // 섬광 상태 이상 처리 (타겟 무작위 변경)
     let finalTargetId = targetId;
     if (attacker.status === 'flash' && !flashbang) {
@@ -254,33 +286,45 @@ export default function Home() {
     const target = newState.players.find(p => p.id === finalTargetId);
     if (!target) return;
     
-    const totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
+    let totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
+    
+    // 광폭화 효과: 데미지 1.2배
+    if (berserk) {
+      totalDamage = Math.floor(totalDamage * 1.2);
+      newState.logs.push(`😡 ${attacker.nickname}님이 광폭화! 데미지가 증가합니다.`);
+    }
+
     attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
 
-    // 섬광탄 효과 적용
+    // 특수 효과 부여
     if (flashbang) {
-      target.status = 'flash';
-      newState.logs.push(`✨ ${attacker.nickname}님이 '섬광탄' 투척! ${target.nickname}님이 섬광 상태가 되었습니다.`);
+      target.status = 'flash'; target.flashDuration = 3;
+      newState.logs.push(`✨ ${attacker.nickname}님이 '섬광탄' 투척! ${target.nickname}님이 3턴간 섬광 상태가 됩니다.`);
+    }
+    if (torch) {
+      target.status = 'burn'; target.burnDuration = 5;
+      newState.logs.push(`🔥 ${attacker.nickname}님이 '횃불'로 공격! ${target.nickname}님이 5턴간 화상 상태가 됩니다.`);
     }
 
     if (attackerId === finalTargetId) {
       attacker.hp = Math.max(0, attacker.hp - totalDamage);
       newState.logs.push(`💥 ${attacker.nickname}님이 자기 자신을 공격! ${totalDamage} 피해.`);
       while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
-      nextTurn(newState); 
-      setGameState(newState); 
-      broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
+      if (berserk) {
+        newState.logs.push(`😡 광폭화 효과로 턴이 넘어가지 않습니다!`);
+      } else {
+        nextTurn(newState); 
+      }
+      setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
       return;
     }
     
     newState.currentAttack = { 
-      attackerId, 
-      attackerName: attacker.nickname, 
-      targetId: finalTargetId, 
-      targetName: target.nickname, 
+      attackerId, attackerName: attacker.nickname, targetId: finalTargetId, targetName: target.nickname, 
       damage: totalDamage, 
       hasDoubleEdged: usedCards.some(c => c.id === 'double_edged'),
-      hasBambooSpear: usedCards.some(c => c.id === 'bamboo_spear')
+      hasBambooSpear: usedCards.some(c => c.id === 'bamboo_spear'),
+      hasBerserk: !!berserk
     };
     newState.phase = 'defense';
     newState.logs.push(`${attacker.nickname} ⚔️ ${target.nickname} (공격력 ${totalDamage})`);
@@ -330,7 +374,11 @@ export default function Home() {
     if (originalAttacker) while (originalAttacker.hand.length < 10) originalAttacker.hand.push(getRandomCard());
     while (defender.hand.length < 10) defender.hand.push(getRandomCard());
     newState.currentAttack = null; newState.phase = 'main';
-    nextTurn(newState); 
+    if (attack.hasBerserk) {
+      newState.logs.push(`😡 광폭화 효과로 턴이 넘어가지 않습니다!`);
+    } else {
+      nextTurn(newState); 
+    }
     setGameState(newState); 
     broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
   };
@@ -348,8 +396,10 @@ export default function Home() {
     broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState }); 
   };
   const nextTurn = (state) => {
-    // 턴이 넘어가기 전에 현재 플레이어의 상태 업데이트 (감전 등)
+    // 1. 현재 플레이어의 상태 업데이트 (감전, 섬광, 화상 등)
     const currentPlayer = state.players[state.turnIndex];
+    
+    // 감전 처리
     if (currentPlayer.status === 'shock') {
       currentPlayer.shockDuration = (currentPlayer.shockDuration || 0) - 1;
       if (currentPlayer.shockDuration <= 0) {
@@ -357,7 +407,31 @@ export default function Home() {
         state.logs.push(`⚡ ${currentPlayer.nickname}님의 감전이 해제되었습니다.`);
       }
     }
+    
+    // 섬광 처리
+    if (currentPlayer.status === 'flash') {
+      currentPlayer.flashDuration = (currentPlayer.flashDuration || 0) - 1;
+      if (currentPlayer.flashDuration <= 0) {
+        currentPlayer.status = null;
+        state.logs.push(`✨ ${currentPlayer.nickname}님의 섬광 상태가 해제되었습니다.`);
+      }
+    }
 
+    // 화상 처리 (턴 시작 시 2데미지)
+    if (currentPlayer.status === 'burn') {
+      currentPlayer.hp = Math.max(0, currentPlayer.hp - 2);
+      currentPlayer.burnDuration = (currentPlayer.burnDuration || 0) - 1;
+      state.logs.push(`🔥 ${currentPlayer.nickname}님이 화상으로 2데미지를 입었습니다. (남은 지속: ${currentPlayer.burnDuration}턴)`);
+      if (currentPlayer.hp <= 0) {
+        state.logs.push(`💀 ${currentPlayer.nickname}님이 화상으로 사망하셨습니다.`);
+      }
+      if (currentPlayer.burnDuration <= 0) {
+        currentPlayer.status = null;
+        state.logs.push(`🔥 ${currentPlayer.nickname}님의 화상이 치유되었습니다.`);
+      }
+    }
+
+    // 2. 다음 플레이어 결정
     state.turnIndex = (state.turnIndex + 1) % state.players.length;
     let s = 0;
     while (state.players[state.turnIndex].hp <= 0 && s < state.players.length) {
@@ -377,8 +451,6 @@ export default function Home() {
       // 다음 플레이어가 감전 상태면 자동으로 턴을 넘김
       if (nextPlayer.status === 'shock') {
         state.logs.push(`⚡ ${nextPlayer.nickname}님은 감전되어 움직일 수 없습니다! (남은 턴: ${nextPlayer.shockDuration})`);
-        // 재귀 호출 시 무한 루프 방지를 위해 약간의 지연 후 호출하도록 구성하거나
-        // 여기서는 즉시 다음 턴을 계산하여 결과적으로 한 번에 여러 명을 건너뜀
         return nextTurn(state); 
       }
     }
@@ -523,7 +595,8 @@ export default function Home() {
                         <span>{p.hp} HP</span>
                       </div>
                       {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 ({p.shockDuration})</div>}
-                      {p.status === 'flash' && <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 'bold' }}>✨ 섬광 상태</div>}
+                      {p.status === 'flash' && <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 'bold' }}>✨ 섬광 ({p.flashDuration})</div>}
+                      {p.status === 'burn' && <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>🔥 화상 ({p.burnDuration})</div>}
                       <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
                     </div>
                   );
