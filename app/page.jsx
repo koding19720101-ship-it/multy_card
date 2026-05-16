@@ -553,7 +553,8 @@ export default function Home() {
   const isTarget = gameState?.currentAttack?.targetId === myPeerId;
   const selectedCards = selectedCardUids.map(uid => myState?.hand.find(c => c.uid === uid));
   const isOrbitShiftSelected = selectedCards.some(c => c?.id === 'orbit_shift');
-  const isDarkCloudSelected = selectedCards.some(c => c?.isAOE);
+  const isAOESelected = selectedCards.some(c => c?.isAOE);
+  const aoeCardName = selectedCards.find(c => c?.isAOE)?.name;
 
   return (
     <div className="main-app" style={{ position: 'relative', width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -631,12 +632,12 @@ export default function Home() {
                   {isMyTurn && myState?.hp > 0 && gameState.phase === 'main' && (
                     <>
                       <button disabled={myState.status === 'shock'} onClick={() => {
-                        if (!targetPlayerId && !isDarkCloudSelected) return alert('타겟을 선택하세요!');
+                        if (!targetPlayerId && !isAOESelected) return alert('타겟을 선택하세요!');
                         if (selectedCardUids.length === 0) return alert('카드를 선택하세요!');
                         const data = { targetId: targetPlayerId, cardUids: selectedCardUids };
                         if (amIHost) processAttack(myPeerId, data); else sendToHost({ type: 'ACTION_ATTACK', data });
                         setSelectedCardUids([]); setTargetPlayerId(null);
-                      }} style={{ background: isDarkCloudSelected ? '#4b5563' : '#ef4444', padding: '1rem' }}>{isDarkCloudSelected ? '먹구름 시전' : '공격하기'}</button>
+                      }} style={{ background: isAOESelected ? '#4b5563' : '#ef4444', padding: '1rem' }}>{isAOESelected ? `${aoeCardName} 시전` : '공격하기'}</button>
                       <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem' }}>턴 넘기기</button>
                     </>
                   )}
