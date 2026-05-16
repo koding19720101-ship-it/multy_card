@@ -22,12 +22,11 @@ export default function Home() {
   const hostConnRef = useRef(null);
   const logsEndRef = useRef(null);
 
-  // 드래그 스크롤을 위한 Ref
   const handRef = useRef(null);
   const isDragging = useRef(false);
   const startX = useRef(0);
   const scrollLeft = useRef(0);
-  const dragDistance = useRef(0); // 드래그 거리 측정 (클릭 vs 드래그 구분)
+  const dragDistance = useRef(0);
 
   useEffect(() => { playersRef.current = players; }, [players]);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -55,7 +54,10 @@ export default function Home() {
     import('peerjs').then(({ default: Peer }) => {
       const newPeer = new Peer();
       newPeer.on('open', (id) => setMyPeerId(id));
-      newPeer.on('connection', (conn) => setupConnection(conn));
+      newPeer.on('connection', (conn) => {
+        console.log('Incoming connection from:', conn.peer);
+        setupConnection(conn);
+      });
       setPeer(newPeer);
     });
     return () => { if (peer) peer.destroy(); };
@@ -67,22 +69,31 @@ export default function Home() {
 
   const setupConnection = (conn) => {
     conn.on('open', () => {
+      console.log('Connection opened with:', conn.peer);
       connectionsRef.current[conn.peer] = conn;
-      if (!amIHost && conn.peer === roomCode.trim()) hostConnRef.current = conn;
+      // 게스트인 경우 방금 연결된 피어를 호스트로 설정
+      if (!amIHost) hostConnRef.current = conn;
     });
     conn.on('data', (data) => handleData(conn.peer, data));
+    conn.on('error', (err) => console.error('Connection error:', err));
+    conn.on('close', () => {
+      console.log('Connection closed:', conn.peer);
+      delete connectionsRef.current[conn.peer];
+    });
   };
 
   const handleData = (senderPeerId, msg) => {
+    console.log('Received data:', msg.type, 'from', senderPeerId);
     switch (msg.type) {
       case 'JOIN_REQUEST':
         const nextPlayers = [...playersRef.current, { id: senderPeerId, nickname: msg.nickname, hp: 100, status: null }];
         setPlayers(nextPlayers);
-        setTimeout(() => broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers }), 100);
+        // 모든 연결된 피어에게 플레이어 리스트 업데이트
+        setTimeout(() => broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers }), 200);
         break;
       case 'PLAYER_LIST_UPDATE':
         setPlayers(msg.players);
-        if (screen === 'home') setScreen('lobby');
+        setScreen('lobby'); // 리스트를 받으면 확실하게 로비로 이동
         break;
       case 'GAME_START':
       case 'GAME_STATE_UPDATE':
@@ -102,11 +113,20 @@ export default function Home() {
   };
 
   const broadcast = (data) => {
-    Object.values(connectionsRef.current).forEach(conn => { if (conn.open) conn.send(data); });
+    Object.values(connectionsRef.current).forEach(conn => {
+      if (conn.open) {
+        console.log('Broadcasting to:', conn.peer);
+        conn.send(data);
+      }
+    });
   };
 
   const sendToHost = (data) => {
-    if (hostConnRef.current?.open) hostConnRef.current.send(data);
+    if (hostConnRef.current && hostConnRef.current.open) {
+      hostConnRef.current.send(data);
+    } else {
+      console.error('Host connection not available');
+    }
   };
 
   const processAttack = (attackerId, { targetId, cardUids }) => {
@@ -176,9 +196,32 @@ export default function Home() {
   const processSkip = (playerId) => { const newState = JSON.parse(JSON.stringify(gameStateRef.current)); const player = newState.players.find(p => p.id === playerId); if (player.status === 'shock') { player.status = null; newState.logs.push(`⚡ ${player.nickname}님의 감전이 해제되었습니다.`); } nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState }); };
   const nextTurn = (state) => { state.turnIndex = (state.turnIndex + 1) % state.players.length; let s = 0; while (state.players[state.turnIndex].hp <= 0 && s < state.players.length) { state.turnIndex = (state.turnIndex + 1) % state.players.length; s++; } if (state.players.filter(p => p.hp > 0).length <= 1) { state.logs.push(`🏆 승리: ${state.players.find(p => p.hp > 0)?.nickname || '없음'}`); state.phase = 'gameover'; } else { state.logs.push(`>>> ${state.players[state.turnIndex].nickname}님의 턴 <<<`); } };
 
-  const handleCreateRoom = () => { if (!nickname.trim()) return alert('닉네임을 입력해주세요!'); setAmIHost(true); setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]); setScreen('lobby'); };
-  const handleJoinRoom = () => { if (!nickname.trim() || !roomCode.trim()) return alert('닉네임과 방 코드를 입력해주세요!'); const c = peer.connect(roomCode.trim()); setupConnection(c); c.on('open', () => c.send({ type: 'JOIN_REQUEST', nickname })); };
-  const handleStartGame = () => { if (players.length < 2) return alert('최소 2명의 플레이어가 필요합니다!'); const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard) })), currentAttack: null, logs: ['전투 시작!'] }; setGameState(s); setScreen('game'); broadcast({ type: 'GAME_START', gameState: s, players }); };
+  const handleCreateRoom = () => {
+    if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
+    setAmIHost(true);
+    setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]);
+    setScreen('lobby');
+  };
+  
+  const handleJoinRoom = () => {
+    if (!nickname.trim() || !roomCode.trim()) return alert('닉네임과 방 코드를 입력해주세요!');
+    console.log('Attempting to join room:', roomCode.trim());
+    const c = peer.connect(roomCode.trim());
+    setupConnection(c);
+    c.on('open', () => {
+      console.log('Sending join request to host...');
+      c.send({ type: 'JOIN_REQUEST', nickname });
+    });
+    c.on('error', (err) => alert('방 참가에 실패했습니다. 코드를 확인해주세요.'));
+  };
+  
+  const handleStartGame = () => {
+    if (players.length < 2) return alert('최소 2명의 플레이어가 필요합니다!');
+    const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard) })), currentAttack: null, logs: ['전투 시작!'] };
+    setGameState(s);
+    setScreen('game');
+    broadcast({ type: 'GAME_START', gameState: s, players });
+  };
 
   const toggleCardSelection = (uid) => {
     const card = myState?.hand.find(c => c.uid === uid);
@@ -191,24 +234,10 @@ export default function Home() {
     });
   };
 
-  // 드래그 스크롤 핸들러 (강화)
-  const handleMouseDown = (e) => {
-    isDragging.current = true;
-    dragDistance.current = 0;
-    startX.current = e.pageX - handRef.current.offsetLeft;
-    scrollLeft.current = handRef.current.scrollLeft;
-    handRef.current.style.cursor = 'grabbing';
-  };
+  const handleMouseDown = (e) => { isDragging.current = true; dragDistance.current = 0; startX.current = e.pageX - handRef.current.offsetLeft; scrollLeft.current = handRef.current.scrollLeft; handRef.current.style.cursor = 'grabbing'; };
   const handleMouseLeave = () => { isDragging.current = false; handRef.current.style.cursor = 'grab'; };
-  const handleMouseUp = (e) => { isDragging.current = false; handRef.current.style.cursor = 'grab'; };
-  const handleMouseMove = (e) => {
-    if (!isDragging.current) return;
-    e.preventDefault();
-    const x = e.pageX - handRef.current.offsetLeft;
-    const walk = (x - startX.current) * 2;
-    dragDistance.current += Math.abs(x - startX.current);
-    handRef.current.scrollLeft = scrollLeft.current - walk;
-  };
+  const handleMouseUp = () => { isDragging.current = false; handRef.current.style.cursor = 'grab'; };
+  const handleMouseMove = (e) => { if (!isDragging.current) return; e.preventDefault(); const x = e.pageX - handRef.current.offsetLeft; const walk = (x - startX.current) * 2; dragDistance.current += Math.abs(x - startX.current); handRef.current.scrollLeft = scrollLeft.current - walk; };
 
   const myState = gameState?.players.find(p => p.id === myPeerId);
   const isMyTurn = gameState && gameState.players[gameState.turnIndex].id === myPeerId;
@@ -293,20 +322,9 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div className="hand-container" 
-            ref={handRef}
-            onMouseDown={handleMouseDown}
-            onMouseLeave={handleMouseLeave}
-            onMouseUp={handleMouseUp}
-            onMouseMove={handleMouseMove}>
+          <div className="hand-container" ref={handRef} onMouseDown={handleMouseDown} onMouseLeave={handleMouseLeave} onMouseUp={handleMouseUp} onMouseMove={handleMouseMove} style={{ opacity: myState?.hp <= 0 ? 0.5 : 1 }}>
             {myState?.hand.map(c => (
-              <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} 
-                onClick={() => {
-                  // 드래그 중에는 클릭(선택)되지 않도록 임계값 설정
-                  if (dragDistance.current < 5) toggleCardSelection(c.uid);
-                }}
-                draggable={false}
-                style={{ height: '200px', minWidth: '160px', display: 'flex', flexDirection: 'column' }}>
+              <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} onClick={() => dragDistance.current < 5 && toggleCardSelection(c.uid)} draggable={false}>
                 <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
                 <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</div>
                 <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: '5px' }}>{c.description}</div>
