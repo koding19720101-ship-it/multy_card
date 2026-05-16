@@ -297,9 +297,12 @@ export default function Home() {
                 })}
               </div>
               <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {isMyTurn && myState?.hp > 0 && (
+                {/* 메인 페이즈(공격 전)에만 버튼 표시 */}
+                {isMyTurn && myState?.hp > 0 && gameState.phase === 'main' && (
                   <>
                     <button disabled={myState.status === 'shock'} onClick={() => {
+                      if (!targetPlayerId && !isDarkCloudSelected) return alert('타겟을 선택하세요!');
+                      if (selectedCardUids.length === 0) return alert('카드를 선택하세요!');
                       const data = { targetId: targetPlayerId, cardUids: selectedCardUids };
                       if (amIHost) processAttack(myPeerId, data); else sendToHost({ type: 'ACTION_ATTACK', data });
                       setSelectedCardUids([]); setTargetPlayerId(null);
@@ -307,6 +310,7 @@ export default function Home() {
                     <button onClick={() => { if (amIHost) processSkip(myPeerId); else sendToHost({ type: 'ACTION_SKIP' }); }} style={{ background: '#64748b', padding: '1rem', fontSize: '1.1rem' }}>턴 넘기기</button>
                   </>
                 )}
+                {/* 방어 페이즈에만 방어 버튼 표시 */}
                 {gameState.phase === 'defense' && isTarget && (
                   <button onClick={() => {
                     const data = { cardUids: selectedCardUids, newTargetId: targetPlayerId };
@@ -318,11 +322,11 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div className="hand-container" style={{ opacity: myState?.hp <= 0 ? 0.5 : 1, height: '220px', flexShrink: 0, marginTop: '1rem' }}>
+          <div className="hand-container" style={{ opacity: myState?.hp <= 0 ? 0.5 : 1, height: '240px', flexShrink: 0, marginTop: '1rem' }}>
             {myState?.hand.map(c => (
               <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} 
                 onClick={() => toggleCardSelection(c.uid)}
-                style={{ height: '180px', minWidth: '130px', display: 'flex', flexDirection: 'column' }}>
+                style={{ height: '200px', minWidth: '140px', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
                 <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text)' }}>{c.name}</div>
                 <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: '5px' }}>{c.description}</div>
