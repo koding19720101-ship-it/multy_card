@@ -681,7 +681,7 @@ export default function Home() {
               <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode.replace('MCG-', '')}</span>
               <button 
                 onClick={() => {
-                  navigator.clipboard.writeText(displayRoomCode);
+                  navigator.clipboard.writeText(displayRoomCode.replace('MCG-', ''));
                   alert('코드가 복사되었습니다!');
                 }}
                 style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#475569' }}
