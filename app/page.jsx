@@ -80,20 +80,36 @@ export default function Home() {
     if (peerRef.current) peerRef.current.destroy();
     
     import('peerjs').then(({ default: Peer }) => {
-      // Vercel(HTTPS) 환경 필수 설정 및 구글 STUN 서버 추가로 연결성 강화
+      // STUN 및 TURN 서버 추가로 다른 네트워크 환경(LTE, 5G 등)에서도 연결 보장
       const peerOptions = {
         debug: 3,
         secure: true,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            {
+              urls: "turn:openrelay.metered.ca:80",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443?transport=tcp",
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            }
           ]
         }
       };
       
-      console.log('PeerJS 초기화 시작...');
-      const newPeer = new Peer(peerOptions);
+      const shortId = 'MCG-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+      console.log('PeerJS 초기화 시작... ID:', shortId);
+      const newPeer = new Peer(shortId, peerOptions);
       
       newPeer.on('open', (id) => {
         console.log('PeerJS 연결 성공! ID:', id);
@@ -108,8 +124,12 @@ export default function Home() {
 
       newPeer.on('error', (err) => {
         console.error('PeerJS 에러:', err);
-        if (err.type === 'peer-unavailable') alert('상대방을 찾을 수 없습니다. 코드를 확인하세요.');
-        else if (err.type === 'network') alert('네트워크 오류가 발생했습니다.');
+        if (err.type === 'unavailable-id') {
+           console.log('ID 중복, 재시도합니다...');
+           initPeer();
+        }
+        else if (err.type === 'peer-unavailable') alert('상대방을 찾을 수 없습니다. 코드를 확인하세요.');
+        else if (err.type === 'network') alert('네트워크 오류가 발생했습니다. (방화벽이나 VPN을 확인하세요)');
         else alert('연결 오류: ' + err.message);
       });
 
@@ -534,12 +554,16 @@ export default function Home() {
   };
   
   const handleJoinRoom = () => {
-    const trimmedCode = roomCode.trim();
+    let trimmedCode = roomCode.trim().toUpperCase();
     if (!nickname.trim() || !trimmedCode) return alert('닉네임과 방 코드를 입력해주세요!');
     if (!peerRef.current) return alert('P2P 네트워크에 연결 중입니다. 잠시 후 다시 시도하세요.');
     
+    if (!trimmedCode.startsWith('MCG-')) {
+      trimmedCode = 'MCG-' + trimmedCode;
+    }
+    
     console.log('방 참가 시도 (Direct P2P):', trimmedCode);
-    const c = peerRef.current.connect(trimmedCode, { metadata: { nickname } });
+    const c = peerRef.current.connect(trimmedCode, { metadata: { nickname }, reliable: true });
     setupConnection(c);
     c.on('open', () => {
       console.log('호스트에게 참가 요청 전송 중...');
@@ -640,7 +664,7 @@ export default function Home() {
             <h1>MULTY-CARD 대기실</h1>
             <p style={{ marginBottom: '0.5rem' }}>내 방 코드:</p>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '0.75rem', borderRadius: '12px', marginBottom: '2rem' }}>
-              <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode}</span>
+              <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode.replace('MCG-', '')}</span>
               <button 
                 onClick={() => {
                   navigator.clipboard.writeText(displayRoomCode);
