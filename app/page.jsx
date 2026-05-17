@@ -348,23 +348,6 @@ export default function Home() {
 
     attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
 
-    // 특수 효과 부여
-    if (flashbang) {
-      target.flashDuration = (target.flashDuration || 0) + 3;
-      newState.logs.push(`✨ ${attacker.nickname}님이 '섬광탄' 투척! ${target.nickname}님의 섬광 지속시간이 증가합니다.`);
-    }
-    if (torch) {
-      target.burnDuration = (target.burnDuration || 0) + 5;
-      newState.logs.push(`🔥 ${attacker.nickname}님이 '횃불'로 공격! ${target.nickname}님의 화상 지속시간이 증가합니다.`);
-    }
-    if (viperFang) {
-      target.poisonDuration = (target.poisonDuration || 0) + 7;
-      newState.logs.push(`🐍 ${attacker.nickname}님이 '독사의 송곳니'로 공격! ${target.nickname}님이 중독됩니다.`);
-    }
-    if (icicle) {
-      target.coldDuration = (target.coldDuration || 0) + 10;
-      newState.logs.push(`❄️ ${attacker.nickname}님이 '고드름'으로 공격! ${target.nickname}님이 감기에 걸립니다.`);
-    }
     if (fishingRodCount > 0 && targetId !== attackerId) {
       let stolen = 0;
       for (let i = 0; i < fishingRodCount; i++) {
@@ -383,6 +366,10 @@ export default function Home() {
     if (attackerId === finalTargetId) {
       attacker.hp = Math.max(0, attacker.hp - totalDamage);
       newState.logs.push(`💥 ${attacker.nickname}님이 자기 자신을 공격! ${totalDamage} 피해.`);
+      if (flashbang) { attacker.flashDuration = (attacker.flashDuration || 0) + 3; newState.logs.push(`✨ 스스로 '섬광탄'에 맞았습니다!`); }
+      if (torch) { attacker.burnDuration = (attacker.burnDuration || 0) + 5; newState.logs.push(`🔥 스스로 '횃불'에 맞았습니다!`); }
+      if (viperFang) { attacker.poisonDuration = (attacker.poisonDuration || 0) + 7; newState.logs.push(`🐍 스스로 '독사의 송곳니'에 맞았습니다!`); }
+      if (icicle) { attacker.coldDuration = (attacker.coldDuration || 0) + 10; newState.logs.push(`❄️ 스스로 '고드름'에 맞았습니다!`); }
       while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
       nextTurn(newState); 
       setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
@@ -393,7 +380,13 @@ export default function Home() {
       attackerId, attackerName: attacker.nickname, targetId: finalTargetId, targetName: target.nickname, 
       damage: totalDamage, 
       hasDoubleEdged: usedCards.some(c => c.id === 'double_edged'),
-      hasBambooSpear: usedCards.some(c => c.id === 'bamboo_spear')
+      hasBambooSpear: usedCards.some(c => c.id === 'bamboo_spear'),
+      statusEffects: {
+        flash: !!flashbang,
+        burn: !!torch,
+        poison: !!viperFang,
+        cold: !!icicle
+      }
     };
     newState.phase = 'defense';
     newState.logs.push(`${attacker.nickname} ⚔️ ${target.nickname} (공격력 ${totalDamage})`);
@@ -437,6 +430,27 @@ export default function Home() {
     } else { 
       defender.hp = Math.max(0, defender.hp - finalDamage); 
       newState.logs.push(`${defender.nickname} 🛡️ 방어 ${finalDefense}. 피해 ${finalDamage}.`); 
+      
+      if (finalDamage > 0 && attack.statusEffects) {
+        if (attack.statusEffects.flash) {
+          defender.flashDuration = (defender.flashDuration || 0) + 3;
+          newState.logs.push(`✨ ${defender.nickname}님의 섬광 지속시간이 증가합니다.`);
+        }
+        if (attack.statusEffects.burn) {
+          defender.burnDuration = (defender.burnDuration || 0) + 5;
+          newState.logs.push(`🔥 ${defender.nickname}님의 화상 지속시간이 증가합니다.`);
+        }
+        if (attack.statusEffects.poison) {
+          defender.poisonDuration = (defender.poisonDuration || 0) + 7;
+          newState.logs.push(`🐍 ${defender.nickname}님이 중독됩니다.`);
+        }
+        if (attack.statusEffects.cold) {
+          defender.coldDuration = (defender.coldDuration || 0) + 10;
+          newState.logs.push(`❄️ ${defender.nickname}님이 감기에 걸립니다.`);
+        }
+      } else if (finalDamage === 0 && attack.statusEffects && (attack.statusEffects.flash || attack.statusEffects.burn || attack.statusEffects.poison || attack.statusEffects.cold)) {
+        newState.logs.push(`🛡️ ${defender.nickname}님이 완벽히 방어하여 상태이상을 무효화했습니다!`);
+      }
     }
     if (attack.hasDoubleEdged && finalDamage > 0) { const attacker = newState.players.find(p => p.id === attack.attackerId); if (attacker) attacker.hp = Math.max(0, attacker.hp - finalDamage); }
     const originalAttacker = newState.players.find(p => p.id === attack.attackerId);
