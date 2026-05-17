@@ -527,7 +527,7 @@ export default function Home() {
 
   const handleCreateRoom = () => {
     if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
-    if (!myPeerId) return alert('서버와 연결 중입니다. 잠시만 기다려주세요!');
+    if (!myPeerId) return alert('P2P 네트워크에 연결 중입니다. 잠시만 기다려주세요!');
     setAmIHost(true);
     setPlayers([{ id: myPeerId, nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
     setScreen('lobby');
@@ -536,7 +536,7 @@ export default function Home() {
   const handleJoinRoom = () => {
     const trimmedCode = roomCode.trim();
     if (!nickname.trim() || !trimmedCode) return alert('닉네임과 방 코드를 입력해주세요!');
-    if (!peerRef.current) return alert('통신 서버와 연결 중입니다. 잠시 후 다시 시도하세요.');
+    if (!peerRef.current) return alert('P2P 네트워크에 연결 중입니다. 잠시 후 다시 시도하세요.');
     
     console.log('방 참가 시도 (Direct P2P):', trimmedCode);
     const c = peerRef.current.connect(trimmedCode, { metadata: { nickname } });
@@ -616,7 +616,7 @@ export default function Home() {
       {/* 상단 연결 상태 표시기 */}
       <div style={{ position: 'fixed', top: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', zIndex: 1000, background: 'rgba(255,255,255,0.9)', padding: '5px 12px', borderRadius: '20px', border: '1px solid #e5e7eb', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: myPeerId ? '#10b981' : '#ef4444' }}></div>
-        <span style={{ color: '#374151', fontWeight: '500' }}>{myPeerId ? '통신 서버 연결됨' : '연결 중...'}</span>
+        <span style={{ color: '#374151', fontWeight: '500' }}>{myPeerId ? 'P2P 연결 준비됨' : '연결 중...'}</span>
         {!myPeerId && <button onClick={initPeer} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}>재시도</button>}
       </div>
 
