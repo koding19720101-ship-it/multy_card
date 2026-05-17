@@ -84,6 +84,7 @@ export default function Home() {
       const peerOptions = {
         debug: 3,
         secure: true,
+        pingInterval: 5000,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -107,7 +108,7 @@ export default function Home() {
         }
       };
       
-      const shortId = 'MCG-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+      const shortId = 'mcg-' + Math.random().toString(36).substring(2, 7).toLowerCase();
       console.log('PeerJS 초기화 시작... ID:', shortId);
       const newPeer = new Peer(shortId, peerOptions);
       
@@ -568,13 +569,14 @@ export default function Home() {
   };
   
   const handleJoinRoom = () => {
-    let trimmedCode = roomCode.trim().toUpperCase();
+    let trimmedCode = roomCode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     if (!nickname.trim() || !trimmedCode) return alert('닉네임과 방 코드를 입력해주세요!');
     if (!peerRef.current) return alert('P2P 네트워크에 연결 중입니다. 잠시 후 다시 시도하세요.');
     
-    if (!trimmedCode.startsWith('MCG-')) {
-      trimmedCode = 'MCG-' + trimmedCode;
+    if (trimmedCode.startsWith('mcg')) {
+      trimmedCode = trimmedCode.substring(3);
     }
+    trimmedCode = 'mcg-' + trimmedCode;
     
     console.log('방 참가 시도 (Direct P2P):', trimmedCode);
     const c = peerRef.current.connect(trimmedCode, { metadata: { nickname }, reliable: true });
@@ -678,10 +680,10 @@ export default function Home() {
             <h1>MULTY-CARD 대기실</h1>
             <p style={{ marginBottom: '0.5rem' }}>내 방 코드:</p>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '0.75rem', borderRadius: '12px', marginBottom: '2rem' }}>
-              <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode.replace('MCG-', '')}</span>
+              <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode.replace('mcg-', '').toUpperCase()}</span>
               <button 
                 onClick={() => {
-                  navigator.clipboard.writeText(displayRoomCode.replace('MCG-', ''));
+                  navigator.clipboard.writeText(displayRoomCode.replace('mcg-', '').toUpperCase());
                   alert('코드가 복사되었습니다!');
                 }}
                 style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#475569' }}
