@@ -56,7 +56,12 @@ export default function Home() {
     { id: 'torch', name: '횃불', type: 'attack', value: 2, description: '2데미지, 화상 부여\n5턴간 매턴 2데미지', icon: '🔥', weight: 35 },
     { id: 'bandage', name: '붕대', type: 'heal', value: 5, description: '체력 5 회복\n선택 대상 치유', icon: '🩹', weight: 40 },
     { id: 'volcano', name: '화산', type: 'attack', value: 5, description: '자신 제외 모두에게\n5데미지 + 화상 부여', icon: '🌋', isAOE: true, weight: 10 },
-    { id: 'berserk', name: '광폭화', type: 'buff', value: 0, description: '공격 시 1장당 데미지 1.2배\n강력한 일격을 준비함', icon: '😡', weight: 20 }
+    { id: 'berserk', name: '광폭화', type: 'buff', value: 0, description: '공격 시 1장당 데미지 1.2배\n강력한 일격을 준비함', icon: '😡', weight: 20 },
+    { id: 'viper_fang', name: '독사의 송곳니', type: 'attack', value: 2, description: '2데미지, 독 부여\n7턴간 매턴 1데미지', icon: '🐍', weight: 35 },
+    { id: 'blood_blast', name: '블러드 블라스트', type: 'attack', value: 0, description: '현재 체력의 50% 소모\n소모한 체력만큼 데미지', icon: '🩸', weight: 15 },
+    { id: 'fishing_rod', name: '낚싯대', type: 'attack', value: 1, description: '1데미지\n상대 패에서 무작위 카드 1장 스틸', icon: '🎣', weight: 25 },
+    { id: 'icicle', name: '고드름', type: 'attack', value: 3, description: '3데미지, 감기 부여\n10턴간 매턴 1데미지', icon: '❄️', weight: 35 },
+    { id: 'barrier', name: '배리어', type: 'defense', value: 12, description: '12방어력\n견고한 마법 방벽', icon: '💠', weight: 30 }
   ];
 
   const getRandomCard = () => {
@@ -171,7 +176,7 @@ export default function Home() {
         // 이미 있는 플레이어인지 확인
         if (playersRef.current.some(p => p.id === senderPeerId)) return;
         
-        const nextPlayers = [...playersRef.current, { id: senderPeerId, nickname: msg.nickname, hp: 100, status: null }];
+        const nextPlayers = [...playersRef.current, { id: senderPeerId, nickname: msg.nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }];
         setPlayers(nextPlayers);
         
         // 새로운 플레이어 리스트를 즉시 전파
@@ -232,7 +237,7 @@ export default function Home() {
   const processAttack = (attackerId, { targetId, cardUids }) => {
     const newState = JSON.parse(JSON.stringify(gameStateRef.current));
     const attacker = newState.players.find(p => p.id === attackerId);
-    if (!attacker || attacker.status === 'shock') return;
+    if (!attacker || attacker.shockDuration > 0) return;
 
     const usedCards = attacker.hand.filter(c => cardUids.includes(c.uid));
     
@@ -257,6 +262,10 @@ export default function Home() {
     const torch = usedCards.find(c => c.id === 'torch');
     const volcano = usedCards.find(c => c.id === 'volcano');
     const berserkCount = usedCards.filter(c => c.id === 'berserk').length;
+    const bloodBlastCount = usedCards.filter(c => c.id === 'blood_blast').length;
+    const fishingRodCount = usedCards.filter(c => c.id === 'fishing_rod').length;
+    const viperFang = usedCards.find(c => c.id === 'viper_fang');
+    const icicle = usedCards.find(c => c.id === 'icicle');
     
     // 광역 카드 처리 (먹구름, 화산)
     const aoecard = usedCards.find(c => c.isAOE);
@@ -266,7 +275,7 @@ export default function Home() {
         const aliveOtherPlayersCount = newState.players.filter(p => p.id !== attackerId && p.hp > 0).length;
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
-            p.hp = Math.max(0, p.hp - 5); p.status = 'shock'; p.shockDuration = (p.shockDuration || 0) + aliveOtherPlayersCount;
+            p.hp = Math.max(0, p.hp - 5); p.shockDuration = (p.shockDuration || 0) + aliveOtherPlayersCount;
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`); 
           } 
         });
@@ -274,7 +283,7 @@ export default function Home() {
         newState.logs.push(`🌋 ${attacker.nickname}님이 '화산' 폭발 시전! 모두에게 공격!`);
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
-            p.hp = Math.max(0, p.hp - 5); p.status = 'burn'; p.burnDuration = (p.burnDuration || 0) + 5; 
+            p.hp = Math.max(0, p.hp - 5); p.burnDuration = (p.burnDuration || 0) + 5; 
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 용암에 휩쓸려 사망했습니다.`); 
           } 
         });
@@ -287,7 +296,7 @@ export default function Home() {
 
     // 섬광 상태 이상 처리 (타겟 무작위 변경)
     let finalTargetId = targetId;
-    if (attacker.status === 'flash' && !flashbang) {
+    if (attacker.flashDuration > 0 && !flashbang) {
       const otherPlayers = newState.players.filter(p => p.id !== attackerId && p.hp > 0);
       if (otherPlayers.length > 0) {
         finalTargetId = otherPlayers[Math.floor(Math.random() * otherPlayers.length)].id;
@@ -300,6 +309,17 @@ export default function Home() {
     
     let totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
     
+    if (bloodBlastCount > 0) {
+      let bloodBlastDamage = 0;
+      for (let i = 0; i < bloodBlastCount; i++) {
+        const cost = Math.ceil(attacker.hp * 0.5);
+        attacker.hp -= cost;
+        bloodBlastDamage += cost;
+      }
+      totalDamage += bloodBlastDamage;
+      newState.logs.push(`🩸 ${attacker.nickname}님이 피의 50%를 소모하여 ${bloodBlastDamage} 데미지를 추가합니다!`);
+    }
+    
     // 광폭화 효과: 한 장당 데미지 1.2배
     if (berserkCount > 0) {
       totalDamage = Math.floor(totalDamage * Math.pow(1.2, berserkCount));
@@ -310,12 +330,34 @@ export default function Home() {
 
     // 특수 효과 부여
     if (flashbang) {
-      target.status = 'flash'; target.flashDuration = (target.flashDuration || 0) + 3;
+      target.flashDuration = (target.flashDuration || 0) + 3;
       newState.logs.push(`✨ ${attacker.nickname}님이 '섬광탄' 투척! ${target.nickname}님의 섬광 지속시간이 증가합니다.`);
     }
     if (torch) {
-      target.status = 'burn'; target.burnDuration = (target.burnDuration || 0) + 5;
+      target.burnDuration = (target.burnDuration || 0) + 5;
       newState.logs.push(`🔥 ${attacker.nickname}님이 '횃불'로 공격! ${target.nickname}님의 화상 지속시간이 증가합니다.`);
+    }
+    if (viperFang) {
+      target.poisonDuration = (target.poisonDuration || 0) + 7;
+      newState.logs.push(`🐍 ${attacker.nickname}님이 '독사의 송곳니'로 공격! ${target.nickname}님이 중독됩니다.`);
+    }
+    if (icicle) {
+      target.coldDuration = (target.coldDuration || 0) + 10;
+      newState.logs.push(`❄️ ${attacker.nickname}님이 '고드름'으로 공격! ${target.nickname}님이 감기에 걸립니다.`);
+    }
+    if (fishingRodCount > 0 && targetId !== attackerId) {
+      let stolen = 0;
+      for (let i = 0; i < fishingRodCount; i++) {
+        if (target.hand.length > 0) {
+          const randIdx = Math.floor(Math.random() * target.hand.length);
+          const card = target.hand.splice(randIdx, 1)[0];
+          attacker.hand.push(card);
+          stolen++;
+        }
+      }
+      if (stolen > 0) {
+        newState.logs.push(`🎣 ${attacker.nickname}님이 '낚싯대'로 ${target.nickname}님의 카드 ${stolen}장을 훔쳤습니다!`);
+      }
     }
 
     if (attackerId === finalTargetId) {
@@ -390,8 +432,7 @@ export default function Home() {
     const newState = JSON.parse(JSON.stringify(gameStateRef.current)); 
     const player = newState.players.find(p => p.id === playerId); 
     // 턴을 넘기면 섬광 상태 해제
-    if (player.status === 'flash') {
-      player.status = null;
+    if (player.flashDuration > 0) {
       player.flashDuration = 0;
       newState.logs.push(`✨ ${player.nickname}님의 섬광 상태가 해제되었습니다.`);
     }
@@ -404,34 +445,54 @@ export default function Home() {
     const currentPlayer = state.players[state.turnIndex];
     
     // 감전 처리
-    if (currentPlayer.status === 'shock') {
-      currentPlayer.shockDuration = (currentPlayer.shockDuration || 0) - 1;
+    if (currentPlayer.shockDuration > 0) {
+      currentPlayer.shockDuration -= 1;
       if (currentPlayer.shockDuration <= 0) {
-        currentPlayer.status = null;
         state.logs.push(`⚡ ${currentPlayer.nickname}님의 감전이 해제되었습니다.`);
       }
     }
     
     // 섬광 처리
-    if (currentPlayer.status === 'flash') {
-      currentPlayer.flashDuration = (currentPlayer.flashDuration || 0) - 1;
+    if (currentPlayer.flashDuration > 0) {
+      currentPlayer.flashDuration -= 1;
       if (currentPlayer.flashDuration <= 0) {
-        currentPlayer.status = null;
         state.logs.push(`✨ ${currentPlayer.nickname}님의 섬광 상태가 해제되었습니다.`);
       }
     }
 
     // 화상 처리 (턴 시작 시 2데미지)
-    if (currentPlayer.status === 'burn') {
+    if (currentPlayer.burnDuration > 0) {
       currentPlayer.hp = Math.max(0, currentPlayer.hp - 2);
-      currentPlayer.burnDuration = (currentPlayer.burnDuration || 0) - 1;
+      currentPlayer.burnDuration -= 1;
       state.logs.push(`🔥 ${currentPlayer.nickname}님이 화상으로 2데미지를 입었습니다. (남은 지속: ${currentPlayer.burnDuration}턴)`);
       if (currentPlayer.hp <= 0) {
         state.logs.push(`💀 ${currentPlayer.nickname}님이 화상으로 사망하셨습니다.`);
-      }
-      if (currentPlayer.burnDuration <= 0) {
-        currentPlayer.status = null;
+      } else if (currentPlayer.burnDuration <= 0) {
         state.logs.push(`🔥 ${currentPlayer.nickname}님의 화상이 치유되었습니다.`);
+      }
+    }
+
+    // 독 처리 (턴 시작 시 1데미지)
+    if (currentPlayer.hp > 0 && currentPlayer.poisonDuration > 0) {
+      currentPlayer.hp = Math.max(0, currentPlayer.hp - 1);
+      currentPlayer.poisonDuration -= 1;
+      state.logs.push(`🐍 ${currentPlayer.nickname}님이 독으로 1데미지를 입었습니다. (남은 지속: ${currentPlayer.poisonDuration}턴)`);
+      if (currentPlayer.hp <= 0) {
+        state.logs.push(`💀 ${currentPlayer.nickname}님이 중독되어 사망하셨습니다.`);
+      } else if (currentPlayer.poisonDuration <= 0) {
+        state.logs.push(`🐍 ${currentPlayer.nickname}님의 독이 해제되었습니다.`);
+      }
+    }
+
+    // 감기 처리 (턴 시작 시 1데미지)
+    if (currentPlayer.hp > 0 && currentPlayer.coldDuration > 0) {
+      currentPlayer.hp = Math.max(0, currentPlayer.hp - 1);
+      currentPlayer.coldDuration -= 1;
+      state.logs.push(`❄️ ${currentPlayer.nickname}님이 감기로 1데미지를 입었습니다. (남은 지속: ${currentPlayer.coldDuration}턴)`);
+      if (currentPlayer.hp <= 0) {
+        state.logs.push(`💀 ${currentPlayer.nickname}님이 감기로 인해 얼어붙어 사망하셨습니다.`);
+      } else if (currentPlayer.coldDuration <= 0) {
+        state.logs.push(`❄️ ${currentPlayer.nickname}님의 감기가 나았습니다.`);
       }
     }
 
@@ -453,7 +514,7 @@ export default function Home() {
       state.logs.push(`>>> ${nextPlayer.nickname}님의 턴 <<<`);
       
       // 다음 플레이어가 감전 상태면 자동으로 턴을 넘김
-      if (nextPlayer.status === 'shock') {
+      if (nextPlayer.shockDuration > 0) {
         state.logs.push(`⚡ ${nextPlayer.nickname}님은 감전되어 움직일 수 없습니다! (남은 턴: ${nextPlayer.shockDuration})`);
         // 무한 루프 방지: 한 번 호출할 때 최대 한 바퀴만 돌도록 제한
         if (s < state.players.length) {
@@ -468,7 +529,7 @@ export default function Home() {
     if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
     if (!myPeerId) return alert('서버와 연결 중입니다. 잠시만 기다려주세요!');
     setAmIHost(true);
-    setPlayers([{ id: myPeerId, nickname, hp: 100, status: null }]);
+    setPlayers([{ id: myPeerId, nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
     setScreen('lobby');
   };
   
@@ -492,7 +553,7 @@ export default function Home() {
   
   const handleStartGame = () => {
     if (players.length < 2) return alert('최소 2명의 플레이어가 필요합니다!');
-    const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard), hp: 100, status: null })), currentAttack: null, logs: ['전투 시작!'] };
+    const s = { turnIndex: 0, phase: 'main', players: players.map(p => ({ ...p, hand: Array.from({ length: 10 }, getRandomCard), hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 })), currentAttack: null, logs: ['전투 시작!'] };
     setGameState(s);
     setScreen('game');
     broadcast({ type: 'GAME_START', gameState: s, players });
@@ -506,7 +567,11 @@ export default function Home() {
         ...p, 
         hand: Array.from({ length: 10 }, getRandomCard), 
         hp: 100, 
-        status: null 
+        shockDuration: 0, 
+        flashDuration: 0, 
+        burnDuration: 0, 
+        poisonDuration: 0, 
+        coldDuration: 0 
       })), 
       currentAttack: null, 
       logs: ['새로운 라운드가 시작되었습니다!'] 
@@ -610,9 +675,11 @@ export default function Home() {
                           <span style={{ fontWeight: 'bold' }}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</span>
                           <span>{p.hp} HP</span>
                         </div>
-                        {p.status === 'shock' && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 ({p.shockDuration})</div>}
-                        {p.status === 'flash' && <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 'bold' }}>✨ 섬광 ({p.flashDuration})</div>}
-                        {p.status === 'burn' && <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>🔥 화상 ({p.burnDuration})</div>}
+                        {p.shockDuration > 0 && <div style={{ fontSize: '0.7rem', color: '#f59e0b', fontWeight: 'bold' }}>⚡ 감전 ({p.shockDuration})</div>}
+                        {p.flashDuration > 0 && <div style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 'bold' }}>✨ 섬광 ({p.flashDuration})</div>}
+                        {p.burnDuration > 0 && <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>🔥 화상 ({p.burnDuration})</div>}
+                        {p.poisonDuration > 0 && <div style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 'bold' }}>🐍 독 ({p.poisonDuration})</div>}
+                        {p.coldDuration > 0 && <div style={{ fontSize: '0.7rem', color: '#0ea5e9', fontWeight: 'bold' }}>❄️ 감기 ({p.coldDuration})</div>}
                         <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
                       </div>
                     );
@@ -621,7 +688,7 @@ export default function Home() {
                 <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {isMyTurn && myState?.hp > 0 && gameState.phase === 'main' && (
                     <>
-                      <button disabled={myState.status === 'shock'} onClick={() => {
+                      <button disabled={myState.shockDuration > 0} onClick={() => {
                         if (!targetPlayerId && !isAOESelected) return alert('타겟을 선택하세요!');
                         if (selectedCardUids.length === 0) return alert('카드를 선택하세요!');
                         const data = { targetId: targetPlayerId, cardUids: selectedCardUids };
