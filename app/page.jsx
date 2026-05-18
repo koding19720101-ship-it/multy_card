@@ -74,13 +74,14 @@ export default function Home() {
     return { ...CARD_TYPES[0], uid: Math.random().toString(36).substring(2, 10) };
   };
 
-  const roomRef = useRef(null);
-  const hostPeerIdRef = useRef(null);
-  const sendDataRef = useRef(null);
+  const mqttClientRef = useRef(null);
+  const mqttTopicRef = useRef('');
+  const hostIdRef = useRef(null);
   const nicknameRef = useRef('');
   const myPeerIdRef = useRef('');
   const retryIntervalRef = useRef(null);
   const isInLobbyRef = useRef(false);
+  const isHostRef = useRef(false);
 
   useEffect(() => {
     nicknameRef.current = nickname;
@@ -90,151 +91,124 @@ export default function Home() {
     myPeerIdRef.current = myPeerId;
   }, [myPeerId]);
 
-  const initTrysteroRoom = (code, isHost) => {
-    import('@trystero-p2p/nostr').then(({ joinRoom, selfId }) => {
-      // 포트 443 WSS 사용 릴레이 → 방화벽/ISP 차단 우회
-      const config = {
-        appId: 'mcg-card-game-v5',
-        relayUrls: [
-          'wss://relay.damus.io',
-          'wss://nostr.wine',
-          'wss://relay.nostr.band',
-          'wss://relay.primal.net',
-          'wss://nos.lol',
-          'wss://nostr.mutinywallet.com',
-          'wss://relay.snort.social',
-          'wss://offchain.pub',
-        ],
-        rtcConfig: {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            { urls: 'stun:stun.cloudflare.com:3478' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            {
-              urls: [
-                'turn:openrelay.metered.ca:80',
-                'turn:openrelay.metered.ca:443',
-                'turn:openrelay.metered.ca:443?transport=tcp',
-              ],
-              username: 'openrelayproject',
-              credential: 'openrelayproject',
-            },
-            {
-              urls: 'turn:numb.viagenie.ca',
-              username: 'webrtc@live.com',
-              credential: 'muazkh',
-            },
-          ]
+  const initMQTTRoom = (code, isHost) => {
+    const myId = 'p' + Math.random().toString(36).substring(2, 10);
+    setMyPeerId(myId);
+    myPeerIdRef.current = myId;
+    isHostRef.current = isHost;
+
+    const topic = 'mcg/game/v3/' + code.toLowerCase();
+    mqttTopicRef.current = topic;
+    const fullRoomId = 'mcg-' + code.toLowerCase();
+    setDisplayRoomCode(fullRoomId);
+
+    if (isHost) {
+      hostIdRef.current = myId;
+      isInLobbyRef.current = true;
+      setPlayers([{ id: myId, nickname: nicknameRef.current, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
+      setScreen('lobby');
+    } else {
+      isInLobbyRef.current = false;
+      setScreen('connecting');
+      setConnectingMsg('서버에 연결 중...');
+    }
+
+    // 공개 MQTT 브로커 목록 (포트 443/8884 WSS - 방화벽 우회)
+    const brokers = [
+      'wss://broker.hivemq.com:8884/mqtt',
+      'wss://broker.emqx.io:8084/mqtt',
+    ];
+
+    import('mqtt').then((mod) => {
+      const mqtt = mod.default ?? mod;
+      let brokerIdx = 0;
+
+      const tryConnect = (idx) => {
+        if (idx >= brokers.length) {
+          alert('서버 연결 실패. 인터넷 상태를 확인해 주세요.');
+          return;
         }
+        console.log('MQTT 연결 시도:', brokers[idx]);
+        setConnectingMsg(`서버 연결 중... (${idx + 1}/${brokers.length})`);
+
+        if (mqttClientRef.current) { try { mqttClientRef.current.end(true); } catch(e){} }
+
+        const client = mqtt.connect(brokers[idx], {
+          clientId: 'mcg_' + myId,
+          clean: true,
+          connectTimeout: 8000,
+          reconnectPeriod: 5000,
+          will: {
+            topic,
+            payload: JSON.stringify({ type: 'PEER_LEAVE', senderId: myId }),
+            qos: 1,
+            retain: false,
+          },
+        });
+        mqttClientRef.current = client;
+
+        const timeout = setTimeout(() => {
+          if (client.connected) return;
+          client.end(true);
+          tryConnect(idx + 1);
+        }, 9000);
+
+        client.on('connect', () => {
+          clearTimeout(timeout);
+          console.log('MQTT 연결 성공:', brokers[idx]);
+          client.subscribe(topic, { qos: 1 }, (err) => {
+            if (err) { console.error('구독 실패:', err); return; }
+            if (!isHost) {
+              setConnectingMsg('호스트에게 참가 요청 중...');
+              const joinMsg = { type: 'JOIN_REQUEST', senderId: myId, nickname: nicknameRef.current };
+              client.publish(topic, JSON.stringify(joinMsg), { qos: 1 });
+              if (retryIntervalRef.current) clearInterval(retryIntervalRef.current);
+              retryIntervalRef.current = setInterval(() => {
+                if (!isInLobbyRef.current && client.connected) {
+                  setConnectingMsg('참가 요청 재시도 중...');
+                  client.publish(topic, JSON.stringify(joinMsg), { qos: 1 });
+                } else {
+                  clearInterval(retryIntervalRef.current);
+                }
+              }, 3000);
+            }
+          });
+        });
+
+        client.on('message', (t, payload) => {
+          try {
+            const msg = JSON.parse(payload.toString());
+            if (msg.senderId === myId) return;
+            console.log('수신:', msg.type, 'from', msg.senderId);
+            handleMQTTData(msg);
+          } catch(e) { console.error('메시지 파싱 오류', e); }
+        });
+
+        client.on('error', (err) => {
+          clearTimeout(timeout);
+          console.error('MQTT 오류:', err);
+        });
       };
 
-      const fullRoomId = 'mcg-' + code.toLowerCase();
-      console.log(`Trystero 방 입장 시도. ID: ${fullRoomId}, Host 여부: ${isHost}`);
-      
-      if (roomRef.current) {
-        roomRef.current.leave();
-      }
-
-      const room = joinRoom(config, fullRoomId);
-      roomRef.current = room;
-      setMyPeerId(selfId);
-      myPeerIdRef.current = selfId;
-      
-      const [sendData, getData] = room.makeAction('gameData');
-      sendDataRef.current = sendData;
-
-      if (isHost) {
-        isInLobbyRef.current = true;
-        setPlayers([{ id: selfId, nickname: nicknameRef.current, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
-        setDisplayRoomCode(fullRoomId);
-        setScreen('lobby');
-      } else {
-        // 게스트: 연결 중 화면으로 전환
-        isInLobbyRef.current = false;
-        setScreen('connecting');
-        setConnectingMsg('Nostr 릴레이에 연결 중...');
-      }
-
-      room.onPeerJoin(peerId => {
-        console.log(`새로운 피어 연결됨: ${peerId}`);
-        if (!isHost) {
-          console.log('호스트에게 JOIN_REQUEST 전송:', peerId);
-          setConnectingMsg('호스트와 연결됨! 참가 요청 중...');
-          sendData({ type: 'JOIN_REQUEST', nickname: nicknameRef.current }, peerId);
-
-          // 혹시 첫 요청이 유실될 경우를 대비한 자동 재시도 (3초 간격)
-          if (retryIntervalRef.current) clearInterval(retryIntervalRef.current);
-          retryIntervalRef.current = setInterval(() => {
-            if (!isInLobbyRef.current) {
-              console.log('JOIN_REQUEST 재시도...');
-              setConnectingMsg('참가 요청 재시도 중...');
-              sendData({ type: 'JOIN_REQUEST', nickname: nicknameRef.current }, peerId);
-            } else {
-              clearInterval(retryIntervalRef.current);
-            }
-          }, 3000);
-        }
-      });
-
-      room.onPeerLeave(peerId => {
-        console.log(`피어 연결 종료됨: ${peerId}`);
-        
-        if (isHost) {
-          const nextPlayers = playersRef.current.filter(p => p.id !== peerId);
-          setPlayers(nextPlayers);
-          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: selfId });
-          
-          if (gameStateRef.current) {
-            const newState = JSON.parse(JSON.stringify(gameStateRef.current));
-            const leavingPlayer = newState.players.find(p => p.id === peerId);
-            if (leavingPlayer) {
-              leavingPlayer.hp = 0;
-              newState.logs.push(`🔌 ${leavingPlayer.nickname}님이 접속을 종료하여 전멸 처리되었습니다.`);
-              
-              if (newState.players[newState.turnIndex].id === peerId) {
-                nextTurn(newState);
-              }
-              setGameState(newState);
-              broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
-            }
-          }
-        } else {
-          if (peerId === hostPeerIdRef.current) {
-            alert('호스트와의 연결이 끊어졌습니다.');
-            window.location.reload();
-          }
-        }
-      });
-
-      getData((msg, senderPeerId) => {
-        console.log(`메시지 수신 (${senderPeerId}): ${msg.type}`);
-        handleTrysteroData(senderPeerId, msg, isHost);
-      });
-
-      // Removed setTimeout for JOIN_REQUEST. It is now handled deterministically in onPeerJoin.
-
+      tryConnect(0);
     }).catch(err => {
-      console.error('Trystero 초기화 실패:', err);
-      alert('네트워크 연결에 실패했습니다. 인터넷 상태를 확인해 주세요.');
+      console.error('MQTT 로드 실패:', err);
+      alert('네트워크 라이브러리 로드 실패. 페이지를 새로고침해 주세요.');
     });
   };
+
+
 
   useEffect(() => {
     const preGeneratedId = 'mcg-' + Math.random().toString(36).substring(2, 7).toLowerCase();
     setMyPeerId(preGeneratedId);
     setDisplayRoomCode(preGeneratedId);
-    // URL 파라미터로 방 코드 자동 입력 (링크 공유 기능)
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
-    if (roomParam) {
-      setRoomCode(roomParam.replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
-    }
+    if (roomParam) setRoomCode(roomParam.replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
     return () => {
-      if (roomRef.current) roomRef.current.leave();
+      if (mqttClientRef.current) { try { mqttClientRef.current.end(true); } catch(e){} }
+      if (retryIntervalRef.current) clearInterval(retryIntervalRef.current);
     };
   }, []);
 
@@ -242,32 +216,22 @@ export default function Home() {
     if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [gameState?.logs]);
 
-  const handleTrysteroData = (senderPeerId, msg, isHost) => {
+  const handleMQTTData = (msg) => {
+    const senderId = msg.senderId;
+    const isHost = isHostRef.current;
     switch (msg.type) {
       case 'JOIN_REQUEST':
-        console.log('Handling JOIN_REQUEST from:', senderPeerId);
         if (!isHost) return;
-        // 이미 추가된 플레이어면 중복 추가 방지하되, PLAYER_LIST_UPDATE는 다시 보내줌
-        const alreadyJoined = playersRef.current.some(p => p.id === senderPeerId);
+        const alreadyJoined = playersRef.current.some(p => p.id === senderId);
         const nextPlayers = alreadyJoined
           ? playersRef.current
-          : [...playersRef.current, { id: senderPeerId, nickname: msg.nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }];
-        
+          : [...playersRef.current, { id: senderId, nickname: msg.nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }];
         if (!alreadyJoined) setPlayers(nextPlayers);
-        
-        // 항상 최신 플레이어 목록을 응답으로 보내줌 (재시도 대응)
-        setTimeout(() => {
-          console.log('Broadcasting updated player list...');
-          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: myPeerIdRef.current });
-        }, 200);
+        setTimeout(() => broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostId: myPeerIdRef.current }), 200);
         break;
       case 'PLAYER_LIST_UPDATE':
-        console.log('Received PLAYER_LIST_UPDATE:', msg.players);
         setPlayers(msg.players);
-        if (msg.hostPeerId) {
-          hostPeerIdRef.current = msg.hostPeerId;
-        }
-        // 재시도 인터벌 정지
+        if (msg.hostId) hostIdRef.current = msg.hostId;
         isInLobbyRef.current = true;
         if (retryIntervalRef.current) clearInterval(retryIntervalRef.current);
         setScreen('lobby');
@@ -278,13 +242,27 @@ export default function Home() {
         if (msg.type === 'GAME_START') setScreen('game');
         break;
       case 'ACTION_ATTACK':
-        if (gameStateRef.current) processAttack(senderPeerId, msg.data);
+        if (isHost && gameStateRef.current) processAttack(senderId, msg.data);
         break;
       case 'ACTION_DEFENSE':
-        if (gameStateRef.current) processDefense(senderPeerId, msg.data);
+        if (isHost && gameStateRef.current) processDefense(senderId, msg.data);
         break;
       case 'ACTION_SKIP':
-        if (gameStateRef.current) processSkip(senderPeerId);
+        if (isHost && gameStateRef.current) processSkip(senderId);
+        break;
+      case 'PEER_LEAVE':
+        if (isHost) {
+          const remaining = playersRef.current.filter(p => p.id !== senderId);
+          setPlayers(remaining);
+          broadcast({ type: 'PLAYER_LIST_UPDATE', players: remaining, hostId: myPeerIdRef.current });
+          if (gameStateRef.current) {
+            const ns = JSON.parse(JSON.stringify(gameStateRef.current));
+            const lp = ns.players.find(p => p.id === senderId);
+            if (lp) { lp.hp = 0; ns.logs.push(`🔌 ${lp.nickname}님이 접속을 종료하여 전멸 처리.`); nextTurn(ns); setGameState(ns); broadcast({ type: 'GAME_STATE_UPDATE', gameState: ns }); }
+          }
+        } else if (senderId === hostIdRef.current) {
+          alert('호스트와의 연결이 끊어졌습니다.'); window.location.reload();
+        }
         break;
       case 'GAME_QUIT':
         alert('호스트가 방을 종료했습니다.');
@@ -294,23 +272,18 @@ export default function Home() {
   };
 
   const broadcast = (data) => {
-    if (sendDataRef.current) {
-      console.log(`Broadcasting ${data.type} to room`);
-      sendDataRef.current(data);
+    const client = mqttClientRef.current;
+    const topic = mqttTopicRef.current;
+    if (client && client.connected && topic) {
+      const msg = { ...data, senderId: myPeerIdRef.current };
+      client.publish(topic, JSON.stringify(msg), { qos: 1 });
     } else {
-      console.warn('sendData is not initialized');
+      console.warn('MQTT 미연결 상태');
     }
   };
 
-  const sendToHost = (data) => {
-    if (sendDataRef.current && hostPeerIdRef.current) {
-      console.log(`Sending ${data.type} to host: ${hostPeerIdRef.current}`);
-      sendDataRef.current(data, hostPeerIdRef.current);
-    } else {
-      console.error('Host connection not available');
-      alert('호스트와 연결되어 있지 않습니다.');
-    }
-  };
+  // MQTT에서는 broadcast와 sendToHost 동일 (브로커가 라우팅)
+  const sendToHost = (data) => broadcast(data);
 
   // 게임 로직
   const processAttack = (attackerId, { targetId, cardUids }) => {
@@ -622,21 +595,17 @@ export default function Home() {
     if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
     setAmIHost(true);
     const code = myPeerId.replace('mcg-', '');
-    initTrysteroRoom(code, true);
+    initMQTTRoom(code, true);
   };
   
   const handleJoinRoom = () => {
     let trimmedCode = roomCode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     if (!nickname.trim() || !trimmedCode) return alert('닉네임과 방 코드를 입력해주세요!');
-    
-    if (trimmedCode.startsWith('mcg')) {
-      trimmedCode = trimmedCode.substring(3);
-    }
-    
+    if (trimmedCode.startsWith('mcg')) trimmedCode = trimmedCode.substring(3);
     setAmIHost(false);
     setScreen('connecting');
     setConnectingMsg('방에 연결하는 중...');
-    initTrysteroRoom(trimmedCode, false);
+    initMQTTRoom(trimmedCode, false);
   };
   
   const handleStartGame = () => {
@@ -703,8 +672,8 @@ export default function Home() {
     <div className="main-app" style={{ position: 'relative', width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       {/* 상단 연결 상태 표시기 */}
       <div style={{ position: 'fixed', top: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', zIndex: 1000, background: 'rgba(255,255,255,0.9)', padding: '5px 12px', borderRadius: '20px', border: '1px solid #e5e7eb', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: myPeerId ? '#10b981' : '#ef4444' }}></div>
-        <span style={{ color: '#374151', fontWeight: '500' }}>{myPeerId ? 'P2P 연결 준비됨' : '연결 중...'}</span>
+        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: mqttClientRef.current?.connected ? '#10b981' : '#f59e0b' }}></div>
+        <span style={{ color: '#374151', fontWeight: '500' }}>{mqttClientRef.current?.connected ? 'MQTT 연결됨' : myPeerId ? '대기 중...' : '연결 중...'}</span>
         {!myPeerId && <button onClick={() => window.location.reload()} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}>재시도</button>}
       </div>
 
