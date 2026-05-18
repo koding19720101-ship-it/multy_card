@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from 'react';
 
 export default function Home() {
-  const [peer, setPeer] = useState(null);
   const [myPeerId, setMyPeerId] = useState('');
   
   const [screen, setScreen] = useState('home');
@@ -19,8 +18,6 @@ export default function Home() {
 
   const playersRef = useRef([]);
   const gameStateRef = useRef(null);
-  const connectionsRef = useRef({}); 
-  const hostConnRef = useRef(null);
   const logsEndRef = useRef(null);
 
   const handRef = useRef(null);
@@ -76,18 +73,25 @@ export default function Home() {
     return { ...CARD_TYPES[0], uid: Math.random().toString(36).substring(2, 10) };
   };
 
-  const initPeer = () => {
-    if (peerRef.current) peerRef.current.destroy();
-    
-    import('peerjs').then(({ default: Peer }) => {
-      // STUN 및 TURN 서버 추가로 다른 네트워크 환경(LTE, 5G 등)에서도 연결 보장
-      const peerOptions = {
-        debug: 3,
-        secure: true,
-        pingInterval: 5000,
-        config: {
+  const roomRef = useRef(null);
+  const hostPeerIdRef = useRef(null);
+  const sendDataRef = useRef(null);
+  const nicknameRef = useRef('');
+
+  useEffect(() => {
+    nicknameRef.current = nickname;
+  }, [nickname]);
+
+  const initTrysteroRoom = (code, isHost) => {
+    import('@trystero-p2p/torrent').then(({ joinRoom }) => {
+      const config = {
+        appId: 'mcg-multiplayer-card-game',
+        rtcConfig: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
             { urls: 'stun:global.stun.twilio.com:3478' },
             {
               urls: "turn:openrelay.metered.ca:80",
@@ -107,109 +111,113 @@ export default function Home() {
           ]
         }
       };
+
+      const fullRoomId = 'mcg-' + code.toLowerCase();
+      console.log(`Trystero 방 입장 시도. ID: ${fullRoomId}, Host 여부: ${isHost}`);
       
-      const shortId = 'mcg-' + Math.random().toString(36).substring(2, 7).toLowerCase();
-      console.log('PeerJS 초기화 시작... ID:', shortId);
-      const newPeer = new Peer(shortId, peerOptions);
+      if (roomRef.current) {
+        roomRef.current.leave();
+      }
+
+      const room = joinRoom(config, fullRoomId);
+      roomRef.current = room;
+      setMyPeerId(room.selfId);
       
-      newPeer.on('open', (id) => {
-        console.log('PeerJS 연결 성공! ID:', id);
-        setMyPeerId(id);
-        setDisplayRoomCode(id);
+      const [sendData, getData] = room.makeAction('gameData');
+      sendDataRef.current = sendData;
+
+      if (isHost) {
+        setPlayers([{ id: room.selfId, nickname: nicknameRef.current, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
+        setDisplayRoomCode(fullRoomId);
+        setScreen('lobby');
+      }
+
+      room.onPeerJoin(peerId => {
+        console.log(`새로운 피어 연결됨: ${peerId}`);
       });
 
-      newPeer.on('connection', (conn) => {
-        console.log('외부 연결 수신:', conn.peer);
-        setupConnection(conn);
-      });
-
-      newPeer.on('error', (err) => {
-        console.error('PeerJS 에러:', err);
-        if (err.type === 'unavailable-id') {
-           console.log('ID 중복, 재시도합니다...');
-           initPeer();
+      room.onPeerLeave(peerId => {
+        console.log(`피어 연결 종료됨: ${peerId}`);
+        
+        if (isHost) {
+          const nextPlayers = playersRef.current.filter(p => p.id !== peerId);
+          setPlayers(nextPlayers);
+          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: room.selfId });
+          
+          if (gameStateRef.current) {
+            const newState = JSON.parse(JSON.stringify(gameStateRef.current));
+            const leavingPlayer = newState.players.find(p => p.id === peerId);
+            if (leavingPlayer) {
+              leavingPlayer.hp = 0;
+              newState.logs.push(`🔌 ${leavingPlayer.nickname}님이 접속을 종료하여 전멸 처리되었습니다.`);
+              
+              if (newState.players[newState.turnIndex].id === peerId) {
+                nextTurn(newState);
+              }
+              setGameState(newState);
+              broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
+            }
+          }
+        } else {
+          if (peerId === hostPeerIdRef.current) {
+            alert('호스트와의 연결이 끊어졌습니다.');
+            window.location.reload();
+          }
         }
-        else if (err.type === 'peer-unavailable') alert('상대방을 찾을 수 없습니다. 코드를 확인하세요.');
-        else if (err.type === 'network') alert('네트워크 오류가 발생했습니다. (방화벽이나 VPN을 확인하세요)');
-        else alert('연결 오류: ' + err.message);
       });
 
-      setPeer(newPeer);
+      getData((msg, senderPeerId) => {
+        console.log(`메시지 수신 (${senderPeerId}): ${msg.type}`);
+        handleTrysteroData(senderPeerId, msg, isHost);
+      });
+
+      if (!isHost) {
+        setTimeout(() => {
+          console.log('호스트에게 참가 요청 전송 중...');
+          sendData({ type: 'JOIN_REQUEST', nickname: nicknameRef.current });
+        }, 1500);
+      }
+
+    }).catch(err => {
+      console.error('Trystero 초기화 실패:', err);
+      alert('네트워크 연결에 실패했습니다. 인터넷 상태를 확인해 주세요.');
     });
   };
 
   useEffect(() => {
-    initPeer();
-    return () => { if (peerRef.current) peerRef.current.destroy(); };
+    const preGeneratedId = 'mcg-' + Math.random().toString(36).substring(2, 7).toLowerCase();
+    setMyPeerId(preGeneratedId);
+    setDisplayRoomCode(preGeneratedId);
+    return () => {
+      if (roomRef.current) roomRef.current.leave();
+    };
   }, []);
-
-  const peerRef = useRef(null);
-  const nicknameRef = useRef('');
-  useEffect(() => { peerRef.current = peer; }, [peer]);
-  useEffect(() => { nicknameRef.current = nickname; }, [nickname]);
 
   useEffect(() => {
     if (logsEndRef.current) logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [gameState?.logs]);
 
-  const setupConnection = (conn) => {
-    // 연결 시도 시점에 즉시 등록하여 레이스 컨디션 방지
-    if (conn.peer) {
-      connectionsRef.current[conn.peer] = conn;
-    }
-
-    conn.on('open', () => {
-      console.log('Connection opened with:', conn.peer);
-      // 확실히 등록 확인
-      connectionsRef.current[conn.peer] = conn;
-      
-      // 게스트인 경우 방금 연결된 피어를 호스트로 설정
-      if (!amIHost) {
-        hostConnRef.current = conn;
-      }
-    });
-
-    conn.on('data', (data) => {
-      console.log('Data received from', conn.peer, ':', data.type);
-      handleData(conn.peer, data);
-    });
-
-    conn.on('error', (err) => {
-      console.error('Connection error with:', conn.peer, err);
-    });
-
-    conn.on('close', () => {
-      console.log('Connection closed:', conn.peer);
-      delete connectionsRef.current[conn.peer];
-      
-      // 호스트와의 연결이 끊긴 경우 알림
-      if (conn.peer === hostConnRef.current?.peer) {
-        alert('호스트와의 연결이 끊어졌습니다.');
-        window.location.reload();
-      }
-    });
-  };
-
-  const handleData = (senderPeerId, msg) => {
+  const handleTrysteroData = (senderPeerId, msg, isHost) => {
     switch (msg.type) {
       case 'JOIN_REQUEST':
         console.log('Handling JOIN_REQUEST from:', senderPeerId);
-        // 이미 있는 플레이어인지 확인
+        if (!isHost) return;
         if (playersRef.current.some(p => p.id === senderPeerId)) return;
         
         const nextPlayers = [...playersRef.current, { id: senderPeerId, nickname: msg.nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }];
         setPlayers(nextPlayers);
         
-        // 새로운 플레이어 리스트를 즉시 전파
-        // 조금의 지연을 주어 상태 업데이트가 반영되도록 함
         setTimeout(() => {
           console.log('Broadcasting updated player list...');
-          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers });
+          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: roomRef.current?.selfId });
         }, 300);
         break;
       case 'PLAYER_LIST_UPDATE':
         console.log('Received PLAYER_LIST_UPDATE:', msg.players);
         setPlayers(msg.players);
+        if (msg.hostPeerId) {
+          hostPeerIdRef.current = msg.hostPeerId;
+        }
         setScreen('lobby');
         break;
       case 'GAME_START':
@@ -234,22 +242,20 @@ export default function Home() {
   };
 
   const broadcast = (data) => {
-    const conns = Object.values(connectionsRef.current);
-    console.log(`Broadcasting ${data.type} to ${conns.length} peers`);
-    conns.forEach(conn => {
-      if (conn && conn.open) {
-        conn.send(data);
-      } else {
-        console.warn('Skipping closed or null connection for broadcast');
-      }
-    });
+    if (sendDataRef.current) {
+      console.log(`Broadcasting ${data.type} to room`);
+      sendDataRef.current(data);
+    } else {
+      console.warn('sendData is not initialized');
+    }
   };
 
   const sendToHost = (data) => {
-    if (hostConnRef.current && hostConnRef.current.open) {
-      hostConnRef.current.send(data);
+    if (sendDataRef.current && hostPeerIdRef.current) {
+      console.log(`Sending ${data.type} to host: ${hostPeerIdRef.current}`);
+      sendDataRef.current(data, hostPeerIdRef.current);
     } else {
-      console.error('Host connection not available or not open');
+      console.error('Host connection not available');
       alert('호스트와 연결되어 있지 않습니다.');
     }
   };
@@ -562,33 +568,21 @@ export default function Home() {
 
   const handleCreateRoom = () => {
     if (!nickname.trim()) return alert('닉네임을 입력해주세요!');
-    if (!myPeerId) return alert('P2P 네트워크에 연결 중입니다. 잠시만 기다려주세요!');
     setAmIHost(true);
-    setPlayers([{ id: myPeerId, nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
-    setScreen('lobby');
+    const code = myPeerId.replace('mcg-', '');
+    initTrysteroRoom(code, true);
   };
   
   const handleJoinRoom = () => {
     let trimmedCode = roomCode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     if (!nickname.trim() || !trimmedCode) return alert('닉네임과 방 코드를 입력해주세요!');
-    if (!peerRef.current) return alert('P2P 네트워크에 연결 중입니다. 잠시 후 다시 시도하세요.');
     
     if (trimmedCode.startsWith('mcg')) {
       trimmedCode = trimmedCode.substring(3);
     }
-    trimmedCode = 'mcg-' + trimmedCode;
     
-    console.log('방 참가 시도 (Direct P2P):', trimmedCode);
-    const c = peerRef.current.connect(trimmedCode, { metadata: { nickname }, reliable: true });
-    setupConnection(c);
-    c.on('open', () => {
-      console.log('호스트에게 참가 요청 전송 중...');
-      c.send({ type: 'JOIN_REQUEST', nickname });
-    });
-    c.on('error', (err) => {
-      console.error('연결 실패:', err);
-      alert('방 참가에 실패했습니다. 코드를 확인해 주세요.');
-    });
+    setAmIHost(false);
+    initTrysteroRoom(trimmedCode, false);
   };
   
   const handleStartGame = () => {
@@ -657,7 +651,7 @@ export default function Home() {
       <div style={{ position: 'fixed', top: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', zIndex: 1000, background: 'rgba(255,255,255,0.9)', padding: '5px 12px', borderRadius: '20px', border: '1px solid #e5e7eb', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: myPeerId ? '#10b981' : '#ef4444' }}></div>
         <span style={{ color: '#374151', fontWeight: '500' }}>{myPeerId ? 'P2P 연결 준비됨' : '연결 중...'}</span>
-        {!myPeerId && <button onClick={initPeer} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}>재시도</button>}
+        {!myPeerId && <button onClick={() => window.location.reload()} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}>재시도</button>}
       </div>
 
       <div className={screen === 'game' ? 'game-container' : 'card'}>
