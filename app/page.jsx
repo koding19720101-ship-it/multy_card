@@ -749,14 +749,7 @@ export default function Home() {
                 style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#475569' }}
               >코드 복사</button>
             </div>
-            <button
-              onClick={() => {
-                const shareUrl = `${window.location.origin}${window.location.pathname}?room=${displayRoomCode.replace('mcg-', '')}`;
-                navigator.clipboard.writeText(shareUrl);
-                alert('참가 링크가 복사되었습니다!\n친구에게 링크를 보내면 자동으로 방 코드가 입력됩니다.');
-              }}
-              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', width: 'auto', background: '#6366f1', marginBottom: '1.5rem', display: 'block', margin: '0 auto 1.5rem' }}
-            >🔗 참가 링크 복사</button>
+
             <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0' }}>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', background: '#f9fafb', borderRadius: '12px', marginBottom: '0.5rem', border: '1px solid #e5e7eb' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
             {amIHost ? <button onClick={handleStartGame}>게임 시작</button> : <p style={{ fontWeight: '600', color: '#64748b' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
           </div>
