@@ -763,13 +763,13 @@ export default function Home() {
         )}
 
         {screen === 'game' && gameState && (
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem' }}>
-            <div style={{ display: 'flex', flex: 1, gap: '1rem', minHeight: 0 }}>
-              <div className="game-logs" style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="game-layout-main">
+            <div className="game-layout-inner">
+              <div className="game-logs">
                 {gameState.logs.map((l, i) => <div key={i}>{l}</div>)}
                 <div ref={logsEndRef}></div>
               </div>
-              <div style={{ width: '280px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+              <div className="game-sidebar">
                 <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem', flexShrink: 0 }}>MULTY-CARD 현황</h2>
                 <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingRight: '5px' }}>
                   {gameState.players.map(p => {
