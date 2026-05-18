@@ -92,31 +92,42 @@ export default function Home() {
 
   const initTrysteroRoom = (code, isHost) => {
     import('@trystero-p2p/nostr').then(({ joinRoom, selfId }) => {
+      // 포트 443 WSS 사용 릴레이 → 방화벽/ISP 차단 우회
       const config = {
-        appId: 'mcg-multiplayer-card-game-v2',
-        // relayUrls를 지정하지 않으면 Trystero 내장 기본 릴레이(55개)를 사용 → 최대 연결 성공률
+        appId: 'mcg-card-game-v5',
+        relayUrls: [
+          'wss://relay.damus.io',
+          'wss://nostr.wine',
+          'wss://relay.nostr.band',
+          'wss://relay.primal.net',
+          'wss://nos.lol',
+          'wss://nostr.mutinywallet.com',
+          'wss://relay.snort.social',
+          'wss://offchain.pub',
+        ],
         rtcConfig: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
             { urls: 'stun:stun.cloudflare.com:3478' },
             { urls: 'stun:global.stun.twilio.com:3478' },
             {
-              urls: 'turn:openrelay.metered.ca:80',
+              urls: [
+                'turn:openrelay.metered.ca:80',
+                'turn:openrelay.metered.ca:443',
+                'turn:openrelay.metered.ca:443?transport=tcp',
+              ],
               username: 'openrelayproject',
-              credential: 'openrelayproject'
+              credential: 'openrelayproject',
             },
             {
-              urls: 'turn:openrelay.metered.ca:443',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
+              urls: 'turn:numb.viagenie.ca',
+              username: 'webrtc@live.com',
+              credential: 'muazkh',
             },
-            {
-              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            }
           ]
         }
       };
@@ -216,6 +227,12 @@ export default function Home() {
     const preGeneratedId = 'mcg-' + Math.random().toString(36).substring(2, 7).toLowerCase();
     setMyPeerId(preGeneratedId);
     setDisplayRoomCode(preGeneratedId);
+    // URL 파라미터로 방 코드 자동 입력 (링크 공유 기능)
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
+    if (roomParam) {
+      setRoomCode(roomParam.replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
+    }
     return () => {
       if (roomRef.current) roomRef.current.leave();
     };
@@ -722,7 +739,7 @@ export default function Home() {
           <div>
             <h1>MULTY-CARD 대기실</h1>
             <p style={{ marginBottom: '0.5rem' }}>내 방 코드:</p>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '0.75rem', borderRadius: '12px', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', padding: '0.75rem', borderRadius: '12px', marginBottom: '0.75rem' }}>
               <span style={{ color: 'var(--primary)', fontWeight: 'bold', fontSize: '1.5rem', letterSpacing: '2px' }}>{displayRoomCode.replace('mcg-', '').toUpperCase()}</span>
               <button 
                 onClick={() => {
@@ -730,8 +747,16 @@ export default function Home() {
                   alert('코드가 복사되었습니다!');
                 }}
                 style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', width: 'auto', background: '#475569' }}
-              >복사</button>
+              >코드 복사</button>
             </div>
+            <button
+              onClick={() => {
+                const shareUrl = `${window.location.origin}${window.location.pathname}?room=${displayRoomCode.replace('mcg-', '')}`;
+                navigator.clipboard.writeText(shareUrl);
+                alert('참가 링크가 복사되었습니다!\n친구에게 링크를 보내면 자동으로 방 코드가 입력됩니다.');
+              }}
+              style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', width: 'auto', background: '#6366f1', marginBottom: '1.5rem', display: 'block', margin: '0 auto 1.5rem' }}
+            >🔗 참가 링크 복사</button>
             <ul style={{ listStyle: 'none', padding: 0, margin: '1rem 0' }}>{players.map(p => <li key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', background: '#f9fafb', borderRadius: '12px', marginBottom: '0.5rem', border: '1px solid #e5e7eb' }}><span>{p.nickname}</span> <span>{p.id === myPeerId ? '✅ 나' : 'READY'}</span></li>)}</ul>
             {amIHost ? <button onClick={handleStartGame}>게임 시작</button> : <p style={{ fontWeight: '600', color: '#64748b' }}>호스트가 게임을 시작하길 기다리고 있습니다...</p>}
           </div>
@@ -820,7 +845,7 @@ export default function Home() {
         
         {/* 하단 버전 정보 */}
         <div style={{ position: 'fixed', bottom: '5px', right: '10px', fontSize: '0.6rem', color: '#9ca3af' }}>
-          v1.2.0 - Nostr P2P Relay
+          v1.3.0 - Nostr P2P (443 WSS)
         </div>
       </div>
     </div>
