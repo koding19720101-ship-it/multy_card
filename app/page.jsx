@@ -77,13 +77,18 @@ export default function Home() {
   const hostPeerIdRef = useRef(null);
   const sendDataRef = useRef(null);
   const nicknameRef = useRef('');
+  const myPeerIdRef = useRef('');
 
   useEffect(() => {
     nicknameRef.current = nickname;
   }, [nickname]);
 
+  useEffect(() => {
+    myPeerIdRef.current = myPeerId;
+  }, [myPeerId]);
+
   const initTrysteroRoom = (code, isHost) => {
-    import('@trystero-p2p/torrent').then(({ joinRoom }) => {
+    import('@trystero-p2p/torrent').then(({ joinRoom, selfId }) => {
       const config = {
         appId: 'mcg-multiplayer-card-game',
         rtcConfig: {
@@ -121,19 +126,23 @@ export default function Home() {
 
       const room = joinRoom(config, fullRoomId);
       roomRef.current = room;
-      setMyPeerId(room.selfId);
+      setMyPeerId(selfId);
+      myPeerIdRef.current = selfId;
       
       const [sendData, getData] = room.makeAction('gameData');
       sendDataRef.current = sendData;
 
       if (isHost) {
-        setPlayers([{ id: room.selfId, nickname: nicknameRef.current, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
+        setPlayers([{ id: selfId, nickname: nicknameRef.current, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
         setDisplayRoomCode(fullRoomId);
         setScreen('lobby');
       }
 
       room.onPeerJoin(peerId => {
         console.log(`새로운 피어 연결됨: ${peerId}`);
+        if (!isHost) {
+          sendData({ type: 'JOIN_REQUEST', nickname: nicknameRef.current }, peerId);
+        }
       });
 
       room.onPeerLeave(peerId => {
@@ -142,7 +151,7 @@ export default function Home() {
         if (isHost) {
           const nextPlayers = playersRef.current.filter(p => p.id !== peerId);
           setPlayers(nextPlayers);
-          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: room.selfId });
+          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: selfId });
           
           if (gameStateRef.current) {
             const newState = JSON.parse(JSON.stringify(gameStateRef.current));
@@ -171,12 +180,7 @@ export default function Home() {
         handleTrysteroData(senderPeerId, msg, isHost);
       });
 
-      if (!isHost) {
-        setTimeout(() => {
-          console.log('호스트에게 참가 요청 전송 중...');
-          sendData({ type: 'JOIN_REQUEST', nickname: nicknameRef.current });
-        }, 1500);
-      }
+      // Removed setTimeout for JOIN_REQUEST. It is now handled deterministically in onPeerJoin.
 
     }).catch(err => {
       console.error('Trystero 초기화 실패:', err);
@@ -209,7 +213,7 @@ export default function Home() {
         
         setTimeout(() => {
           console.log('Broadcasting updated player list...');
-          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: roomRef.current?.selfId });
+          broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: myPeerIdRef.current });
         }, 300);
         break;
       case 'PLAYER_LIST_UPDATE':
