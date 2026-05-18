@@ -133,3 +133,14 @@ button {
 /* 스크롤바 표시 허용 */
 * { -ms-overflow-style: auto; scrollbar-width: auto; }
 .hand-container::-webkit-scrollbar { display: none; } /* 카드 영역만 숨김 유지 */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes loading-bar {
+  0% { width: 0%; margin-left: 0; }
+  50% { width: 60%; margin-left: 20%; }
+  100% { width: 0%; margin-left: 100%; }
+}

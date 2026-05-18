@@ -6,6 +6,7 @@ export default function Home() {
   const [myPeerId, setMyPeerId] = useState('');
   
   const [screen, setScreen] = useState('home');
+  const [connectingMsg, setConnectingMsg] = useState('');
   const [nickname, setNickname] = useState('');
   const [roomCode, setRoomCode] = useState('');
   
@@ -78,6 +79,8 @@ export default function Home() {
   const sendDataRef = useRef(null);
   const nicknameRef = useRef('');
   const myPeerIdRef = useRef('');
+  const retryIntervalRef = useRef(null);
+  const isInLobbyRef = useRef(false);
 
   useEffect(() => {
     nicknameRef.current = nickname;
@@ -91,16 +94,7 @@ export default function Home() {
     import('@trystero-p2p/nostr').then(({ joinRoom, selfId }) => {
       const config = {
         appId: 'mcg-multiplayer-card-game-v2',
-        // 한국에서 접근 가능한 공개 Nostr WebSocket 릴레이 서버들
-        relayUrls: [
-          'wss://relay.damus.io',
-          'wss://nos.lol',
-          'wss://relay.snort.social',
-          'wss://nostr.wine',
-          'wss://relay.nostr.band',
-          'wss://nostr-pub.wellorder.net',
-          'wss://relay.current.fyi',
-        ],
+        // relayUrls를 지정하지 않으면 Trystero 내장 기본 릴레이(55개)를 사용 → 최대 연결 성공률
         rtcConfig: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -143,15 +137,35 @@ export default function Home() {
       sendDataRef.current = sendData;
 
       if (isHost) {
+        isInLobbyRef.current = true;
         setPlayers([{ id: selfId, nickname: nicknameRef.current, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }]);
         setDisplayRoomCode(fullRoomId);
         setScreen('lobby');
+      } else {
+        // 게스트: 연결 중 화면으로 전환
+        isInLobbyRef.current = false;
+        setScreen('connecting');
+        setConnectingMsg('Nostr 릴레이에 연결 중...');
       }
 
       room.onPeerJoin(peerId => {
         console.log(`새로운 피어 연결됨: ${peerId}`);
         if (!isHost) {
+          console.log('호스트에게 JOIN_REQUEST 전송:', peerId);
+          setConnectingMsg('호스트와 연결됨! 참가 요청 중...');
           sendData({ type: 'JOIN_REQUEST', nickname: nicknameRef.current }, peerId);
+
+          // 혹시 첫 요청이 유실될 경우를 대비한 자동 재시도 (3초 간격)
+          if (retryIntervalRef.current) clearInterval(retryIntervalRef.current);
+          retryIntervalRef.current = setInterval(() => {
+            if (!isInLobbyRef.current) {
+              console.log('JOIN_REQUEST 재시도...');
+              setConnectingMsg('참가 요청 재시도 중...');
+              sendData({ type: 'JOIN_REQUEST', nickname: nicknameRef.current }, peerId);
+            } else {
+              clearInterval(retryIntervalRef.current);
+            }
+          }, 3000);
         }
       });
 
@@ -216,15 +230,19 @@ export default function Home() {
       case 'JOIN_REQUEST':
         console.log('Handling JOIN_REQUEST from:', senderPeerId);
         if (!isHost) return;
-        if (playersRef.current.some(p => p.id === senderPeerId)) return;
+        // 이미 추가된 플레이어면 중복 추가 방지하되, PLAYER_LIST_UPDATE는 다시 보내줌
+        const alreadyJoined = playersRef.current.some(p => p.id === senderPeerId);
+        const nextPlayers = alreadyJoined
+          ? playersRef.current
+          : [...playersRef.current, { id: senderPeerId, nickname: msg.nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }];
         
-        const nextPlayers = [...playersRef.current, { id: senderPeerId, nickname: msg.nickname, hp: 100, shockDuration: 0, flashDuration: 0, burnDuration: 0, poisonDuration: 0, coldDuration: 0 }];
-        setPlayers(nextPlayers);
+        if (!alreadyJoined) setPlayers(nextPlayers);
         
+        // 항상 최신 플레이어 목록을 응답으로 보내줌 (재시도 대응)
         setTimeout(() => {
           console.log('Broadcasting updated player list...');
           broadcast({ type: 'PLAYER_LIST_UPDATE', players: nextPlayers, hostPeerId: myPeerIdRef.current });
-        }, 300);
+        }, 200);
         break;
       case 'PLAYER_LIST_UPDATE':
         console.log('Received PLAYER_LIST_UPDATE:', msg.players);
@@ -232,6 +250,9 @@ export default function Home() {
         if (msg.hostPeerId) {
           hostPeerIdRef.current = msg.hostPeerId;
         }
+        // 재시도 인터벌 정지
+        isInLobbyRef.current = true;
+        if (retryIntervalRef.current) clearInterval(retryIntervalRef.current);
         setScreen('lobby');
         break;
       case 'GAME_START':
@@ -596,6 +617,8 @@ export default function Home() {
     }
     
     setAmIHost(false);
+    setScreen('connecting');
+    setConnectingMsg('방에 연결하는 중...');
     initTrysteroRoom(trimmedCode, false);
   };
   
@@ -669,6 +692,18 @@ export default function Home() {
       </div>
 
       <div className={screen === 'game' ? 'game-container' : 'card'}>
+        {screen === 'connecting' && (
+          <div style={{ textAlign: 'center', padding: '2rem' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem', animation: 'spin 1.5s linear infinite', display: 'inline-block' }}>🌐</div>
+            <h2 style={{ marginBottom: '0.5rem' }}>방에 연결하는 중...</h2>
+            <p style={{ color: '#64748b', fontSize: '0.95rem', marginBottom: '1.5rem' }}>{connectingMsg}</p>
+            <div style={{ width: '200px', height: '4px', background: '#e5e7eb', borderRadius: '2px', margin: '0 auto 1.5rem', overflow: 'hidden' }}>
+              <div style={{ height: '100%', background: 'var(--primary)', borderRadius: '2px', animation: 'loading-bar 2s ease-in-out infinite' }}></div>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: '#9ca3af' }}>최대 15~30초 소요될 수 있습니다</p>
+            <button onClick={() => { if (retryIntervalRef.current) clearInterval(retryIntervalRef.current); setScreen('home'); }} style={{ marginTop: '1.5rem', background: '#64748b', padding: '0.6rem 1.5rem', width: 'auto' }}>취소</button>
+          </div>
+        )}
         {screen === 'home' && (
           <div>
             <h1>MULTY-CARD</h1>
