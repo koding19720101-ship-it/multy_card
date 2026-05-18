@@ -694,7 +694,7 @@ export default function Home() {
       <div className={screen === 'game' ? 'game-container' : 'card'}>
         {screen === 'connecting' && (
           <div style={{ textAlign: 'center', padding: '2rem' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem', animation: 'spin 1.5s linear infinite', display: 'inline-block' }}>🌐</div>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🌐</div>
             <h2 style={{ marginBottom: '0.5rem' }}>방에 연결하는 중...</h2>
             <p style={{ color: '#64748b', fontSize: '0.95rem', marginBottom: '1.5rem' }}>{connectingMsg}</p>
             <div style={{ width: '200px', height: '4px', background: '#e5e7eb', borderRadius: '2px', margin: '0 auto 1.5rem', overflow: 'hidden' }}>
