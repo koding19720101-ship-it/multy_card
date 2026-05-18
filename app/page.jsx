@@ -346,14 +346,29 @@ export default function Home() {
       return;
     }
 
-    // 섬광 상태 이상 처리 (타겟 무작위 변경)
+    // 섬광 상태 이상 처리 (50% 확률로 빗나감 / 50% 확률로 타겟 무작위 변경)
     let finalTargetId = targetId;
+    let isMissed = false;
     if (attacker.flashDuration > 0 && !flashbang) {
-      const otherPlayers = newState.players.filter(p => p.id !== attackerId && p.hp > 0);
-      if (otherPlayers.length > 0) {
-        finalTargetId = otherPlayers[Math.floor(Math.random() * otherPlayers.length)].id;
-        newState.logs.push(`✨ ${attacker.nickname}님이 섬광 상태라 눈이 부십니다! 타겟이 변경됨.`);
+      if (Math.random() < 0.5) {
+        isMissed = true;
+      } else {
+        const otherPlayers = newState.players.filter(p => p.id !== attackerId && p.hp > 0);
+        if (otherPlayers.length > 0) {
+          finalTargetId = otherPlayers[Math.floor(Math.random() * otherPlayers.length)].id;
+          newState.logs.push(`✨ ${attacker.nickname}님이 섬광 상태라 눈이 부십니다! 타겟이 변경됨.`);
+        }
       }
+    }
+
+    if (isMissed) {
+      newState.logs.push(`✨ 섬광으로 인해 ${attacker.nickname}님의 공격이 빗나갔습니다!`);
+      attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
+      while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
+      nextTurn(newState);
+      setGameState(newState);
+      broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
+      return;
     }
     
     const target = newState.players.find(p => p.id === finalTargetId);
