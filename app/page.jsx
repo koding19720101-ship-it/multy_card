@@ -88,9 +88,19 @@ export default function Home() {
   }, [myPeerId]);
 
   const initTrysteroRoom = (code, isHost) => {
-    import('@trystero-p2p/torrent').then(({ joinRoom, selfId }) => {
+    import('@trystero-p2p/nostr').then(({ joinRoom, selfId }) => {
       const config = {
-        appId: 'mcg-multiplayer-card-game',
+        appId: 'mcg-multiplayer-card-game-v2',
+        // 한국에서 접근 가능한 공개 Nostr WebSocket 릴레이 서버들
+        relayUrls: [
+          'wss://relay.damus.io',
+          'wss://nos.lol',
+          'wss://relay.snort.social',
+          'wss://nostr.wine',
+          'wss://relay.nostr.band',
+          'wss://nostr-pub.wellorder.net',
+          'wss://relay.current.fyi',
+        ],
         rtcConfig: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -99,19 +109,19 @@ export default function Home() {
             { urls: 'stun:stun.cloudflare.com:3478' },
             { urls: 'stun:global.stun.twilio.com:3478' },
             {
-              urls: "turn:openrelay.metered.ca:80",
-              username: "openrelayproject",
-              credential: "openrelayproject"
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
             },
             {
-              urls: "turn:openrelay.metered.ca:443",
-              username: "openrelayproject",
-              credential: "openrelayproject"
+              urls: 'turn:openrelay.metered.ca:443',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
             },
             {
-              urls: "turn:openrelay.metered.ca:443?transport=tcp",
-              username: "openrelayproject",
-              credential: "openrelayproject"
+              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
             }
           ]
         }
@@ -775,7 +785,7 @@ export default function Home() {
         
         {/* 하단 버전 정보 */}
         <div style={{ position: 'fixed', bottom: '5px', right: '10px', fontSize: '0.6rem', color: '#9ca3af' }}>
-          v1.1.0 - Stability & Syntax Fix
+          v1.2.0 - Nostr P2P Relay
         </div>
       </div>
     </div>
