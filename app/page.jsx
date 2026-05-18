@@ -413,10 +413,10 @@ export default function Home() {
     if (attackerId === finalTargetId) {
       attacker.hp = Math.max(0, attacker.hp - totalDamage);
       newState.logs.push(`💥 ${attacker.nickname}님이 자기 자신을 공격! ${totalDamage} 피해.`);
-      if (flashbang) { attacker.flashDuration = (attacker.flashDuration || 0) + 3; newState.logs.push(`✨ 스스로 '섬광탄'에 맞았습니다!`); }
-      if (torch) { attacker.burnDuration = (attacker.burnDuration || 0) + 5; newState.logs.push(`🔥 스스로 '횃불'에 맞았습니다!`); }
-      if (viperFang) { attacker.poisonDuration = (attacker.poisonDuration || 0) + 7; newState.logs.push(`🐍 스스로 '독사의 송곳니'에 맞았습니다!`); }
-      if (icicle) { attacker.coldDuration = (attacker.coldDuration || 0) + 10; newState.logs.push(`❄️ 스스로 '고드름'에 맞았습니다!`); }
+      if (flashbang) { attacker.flashDuration = (attacker.flashDuration || 0) + 3; newState.logs.push(`✨ 스스로 '섬광탄'에 맞았습니다! (남은 지속: ${attacker.flashDuration}턴)`); }
+      if (torch) { attacker.burnDuration = (attacker.burnDuration || 0) + 5; newState.logs.push(`🔥 스스로 '횃불'에 맞았습니다! (남은 지속: ${attacker.burnDuration}턴)`); }
+      if (viperFang) { attacker.poisonDuration = (attacker.poisonDuration || 0) + 7; newState.logs.push(`🐍 스스로 '독사의 송곳니'에 맞았습니다! (남은 지속: ${attacker.poisonDuration}턴)`); }
+      if (icicle) { attacker.coldDuration = (attacker.coldDuration || 0) + 10; newState.logs.push(`❄️ 스스로 '고드름'에 맞았습니다! (남은 지속: ${attacker.coldDuration}턴)`); }
       while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
       nextTurn(newState); 
       setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
@@ -480,20 +480,40 @@ export default function Home() {
       
       if (finalDamage > 0 && attack.statusEffects) {
         if (attack.statusEffects.flash) {
-          defender.flashDuration = (defender.flashDuration || 0) + 3;
-          newState.logs.push(`✨ ${defender.nickname}님의 섬광 지속시간이 증가합니다.`);
+          const old = defender.flashDuration || 0;
+          defender.flashDuration = old + 3;
+          if (old === 0) {
+            newState.logs.push(`✨ ${defender.nickname}님이 섬광 상태가 되었습니다! (지속: 3턴)`);
+          } else {
+            newState.logs.push(`✨ ${defender.nickname}님의 섬광 지속시간이 3턴 증가했습니다! (현재 남은 지속: ${defender.flashDuration}턴)`);
+          }
         }
         if (attack.statusEffects.burn) {
-          defender.burnDuration = (defender.burnDuration || 0) + 5;
-          newState.logs.push(`🔥 ${defender.nickname}님의 화상 지속시간이 증가합니다.`);
+          const old = defender.burnDuration || 0;
+          defender.burnDuration = old + 5;
+          if (old === 0) {
+            newState.logs.push(`🔥 ${defender.nickname}님이 화상 상태가 되었습니다! (지속: 5턴)`);
+          } else {
+            newState.logs.push(`🔥 ${defender.nickname}님의 화상 지속시간이 5턴 증가했습니다! (현재 남은 지속: ${defender.burnDuration}턴)`);
+          }
         }
         if (attack.statusEffects.poison) {
-          defender.poisonDuration = (defender.poisonDuration || 0) + 7;
-          newState.logs.push(`🐍 ${defender.nickname}님이 중독됩니다.`);
+          const old = defender.poisonDuration || 0;
+          defender.poisonDuration = old + 7;
+          if (old === 0) {
+            newState.logs.push(`🐍 ${defender.nickname}님이 중독되었습니다! (지속: 7턴)`);
+          } else {
+            newState.logs.push(`🐍 ${defender.nickname}님의 중독 지속시간이 7턴 증가했습니다! (현재 남은 지속: ${defender.poisonDuration}턴)`);
+          }
         }
         if (attack.statusEffects.cold) {
-          defender.coldDuration = (defender.coldDuration || 0) + 10;
-          newState.logs.push(`❄️ ${defender.nickname}님이 감기에 걸립니다.`);
+          const old = defender.coldDuration || 0;
+          defender.coldDuration = old + 10;
+          if (old === 0) {
+            newState.logs.push(`❄️ ${defender.nickname}님이 감기에 걸렸습니다! (지속: 10턴)`);
+          } else {
+            newState.logs.push(`❄️ ${defender.nickname}님의 감기 지속시간이 10턴 증가했습니다! (현재 남은 지속: ${defender.coldDuration}턴)`);
+          }
         }
       } else if (finalDamage === 0 && attack.statusEffects && (attack.statusEffects.flash || attack.statusEffects.burn || attack.statusEffects.poison || attack.statusEffects.cold)) {
         newState.logs.push(`🛡️ ${defender.nickname}님이 완벽히 방어하여 상태이상을 무효화했습니다!`);
@@ -593,6 +613,9 @@ export default function Home() {
     } else {
       const nextPlayer = state.players[state.turnIndex];
       state.logs.push(`>>> ${nextPlayer.nickname}님의 턴 <<<`);
+      if (nextPlayer.flashDuration > 0) {
+        state.logs.push(`✨ ${nextPlayer.nickname}님은 섬광 상태입니다! (공격 시 50% 확률로 빗나감, 남은 지속: ${nextPlayer.flashDuration}턴)`);
+      }
       
       // 다음 플레이어가 감전 상태면 자동으로 턴을 넘김
       if (nextPlayer.shockDuration > 0) {
