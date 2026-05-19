@@ -66,7 +66,13 @@ export default function Home() {
     { id: 'blizzard', name: '눈보라', type: 'attack', value: 1, description: '1데미지\n모두에게 감기 10턴 부여', icon: '🌨️', isAOE: true, weight: 25 },
     { id: 'wall', name: '벽', type: 'defense', value: 0, description: '방어력 무한\n모든 공격을 막아낸다', icon: '🧱', weight: 5 },
     { id: 'spike_shield', name: '가시방패', type: 'defense', value: 7, description: '방어력 7\n받은 데미지의 50%를 공격자에게 반사', icon: '🦔', weight: 25 },
-    { id: 'ragged_cloak', name: '누더기 망토', type: 'defense', value: 4, description: '방어력 4\n낡고 해진 방어구', icon: '🧥', weight: 45 }
+    { id: 'ragged_cloak', name: '누더기 망토', type: 'defense', value: 4, description: '방어력 4\n낡고 해진 방어구', icon: '🧥', weight: 45 },
+    // 새 카드 추가 3
+    { id: 'tax_collection', name: '세금 징수', type: 'attack', value: 0, description: '모두의 패에서\n무작위 카드 2장 징수', icon: '⚖️', isAOE: true, weight: 15 },
+    { id: 'confiscation', name: '몰수', type: 'attack', value: 0, description: '대상 플레이어의\n모든 카드를 강탈함', icon: '📜', weight: 10 },
+    { id: 'crasher', name: '크래셔', type: 'attack', value: 9, description: '기본 9데미지\n체력이 낮을수록 피해 증가', icon: '🪓', weight: 20 },
+    { id: 'katana', name: '카타나', type: 'attack', value: 9, description: '적에게 날카롭고 신속한\n9데미지를 입힙니다', icon: '⚔️', weight: 30 },
+    { id: 'chain', name: '사슬', type: 'attack', value: 2, description: '2데미지, 무작위 카드 1장\n사슬로 1턴간 사용불가', icon: '⛓️', weight: 25 }
   ];
 
   const getRandomCard = () => {
@@ -358,7 +364,7 @@ export default function Home() {
     const viperFang = usedCards.find(c => c.id === 'viper_fang');
     const icicle = usedCards.find(c => c.id === 'icicle');
     
-    // 광역 카드 처리 (먹구름, 화산)
+    // 광역 카드 처리 (먹구름, 화산, 눈보라, 세금 징수)
     const aoecard = usedCards.find(c => c.isAOE);
     if (aoecard) {
       if (aoecard.id === 'dark_cloud') {
@@ -385,6 +391,24 @@ export default function Home() {
             p.hp = Math.max(0, p.hp - 1); p.coldDuration = (p.coldDuration || 0) + 10; 
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 얼어붙어 사망했습니다.`); 
           } 
+        });
+      } else if (aoecard.id === 'tax_collection') {
+        newState.logs.push(`⚖️ ${attacker.nickname}님이 '세금 징수' 시전! 모두의 패를 징수합니다!`);
+        newState.players.forEach(p => {
+          if (p.id !== attackerId && p.hp > 0) {
+            let stolenCount = 0;
+            for (let i = 0; i < 2; i++) {
+              if (p.hand.length > 0) {
+                const randIdx = Math.floor(Math.random() * p.hand.length);
+                const card = p.hand.splice(randIdx, 1)[0];
+                attacker.hand.push(card);
+                stolenCount++;
+              }
+            }
+            if (stolenCount > 0) {
+              newState.logs.push(`💸 ${p.nickname}님의 패에서 카드 ${stolenCount}장을 세금으로 징수했습니다.`);
+            }
+          }
         });
       }
       attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
@@ -423,6 +447,14 @@ export default function Home() {
     
     let totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
     
+    const crasherCount = usedCards.filter(c => c.id === 'crasher').length;
+    if (crasherCount > 0) {
+      const lostHp = 100 - attacker.hp;
+      const extraDmg = Math.floor(lostHp * 0.2) * crasherCount;
+      totalDamage += extraDmg;
+      newState.logs.push(`🪓 ${attacker.nickname}님의 크래셔 발동! 잃은 체력(${lostHp})에 비례해 +${extraDmg} 데미지 추가!`);
+    }
+
     if (bloodBlastCount > 0) {
       let bloodBlastDamage = 0;
       for (let i = 0; i < bloodBlastCount; i++) {
@@ -454,6 +486,40 @@ export default function Home() {
       }
       if (stolen > 0) {
         newState.logs.push(`🎣 ${attacker.nickname}님이 '낚싯대'로 ${target.nickname}님의 카드 ${stolen}장을 훔쳤습니다!`);
+      }
+    }
+
+    const confiscationCount = usedCards.filter(c => c.id === 'confiscation').length;
+    if (confiscationCount > 0 && targetId !== attackerId) {
+      let totalStolen = 0;
+      if (target.hand.length > 0) {
+        const stolenCards = [...target.hand];
+        target.hand = [];
+        attacker.hand.push(...stolenCards);
+        totalStolen = stolenCards.length;
+      }
+      if (totalStolen > 0) {
+        newState.logs.push(`📜 ${attacker.nickname}님이 '몰수'를 사용해 ${target.nickname}님의 모든 카드(${totalStolen}장)를 가져왔습니다!`);
+      }
+    }
+
+    const chainCount = usedCards.filter(c => c.id === 'chain').length;
+    if (chainCount > 0 && targetId !== attackerId) {
+      let unlockedCards = target.hand.filter(c => !c.locked);
+      let lockedThisTurn = 0;
+      for (let i = 0; i < chainCount; i++) {
+        if (unlockedCards.length > 0) {
+          const randIdx = Math.floor(Math.random() * unlockedCards.length);
+          const selectedCard = unlockedCards.splice(randIdx, 1)[0];
+          const targetCard = target.hand.find(c => c.uid === selectedCard.uid);
+          if (targetCard) {
+            targetCard.locked = true;
+            lockedThisTurn++;
+          }
+        }
+      }
+      if (lockedThisTurn > 0) {
+        newState.logs.push(`⛓️ ${attacker.nickname}님이 '사슬'을 시전하여 ${target.nickname}님의 카드 ${lockedThisTurn}장에 사슬을 걸었습니다! (1턴간 사용 불가)`);
       }
     }
 
@@ -626,6 +692,16 @@ export default function Home() {
     // 1. 현재 플레이어의 상태 업데이트 (감전, 섬광, 화상 등)
     const currentPlayer = state.players[state.turnIndex];
     
+    // 사슬(locked) 카드 해제
+    if (currentPlayer && currentPlayer.hand) {
+      currentPlayer.hand.forEach(card => {
+        if (card.locked) {
+          card.locked = false;
+          state.logs.push(`⛓️ ${currentPlayer.nickname}님의 카드 '${card.name}'의 사슬이 해제되었습니다.`);
+        }
+      });
+    }
+    
     // 감전 처리
     if (currentPlayer.shockDuration > 0) {
       currentPlayer.shockDuration -= 1;
@@ -765,7 +841,7 @@ export default function Home() {
 
   const toggleCardSelection = (uid) => {
     const card = myState?.hand.find(c => c.uid === uid);
-    if (!card) return;
+    if (!card || card.locked) return;
     setSelectedCardUids(prev => {
       if (card.isAOE) return prev.includes(uid) ? [] : [uid];
       const hasAOESelected = prev.some(id => myState?.hand.find(c => c.uid === id)?.isAOE);
@@ -913,7 +989,22 @@ export default function Home() {
             </div>
             <div className="hand-container" ref={handRef} onMouseDown={handleMouseDown} onMouseLeave={handleMouseLeave} onMouseUp={handleMouseUp} onMouseMove={handleMouseMove} style={{ opacity: myState?.hp <= 0 ? 0.5 : 1 }}>
               {myState?.hand.map(c => (
-                <div key={c.uid} className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} onClick={() => dragDistance.current < 5 && toggleCardSelection(c.uid)} draggable={false}>
+                <div key={c.uid} 
+                  className={`playing-card type-${c.type} ${selectedCardUids.includes(c.uid) ? 'selected' : ''}`} 
+                  onClick={() => !c.locked && dragDistance.current < 5 && toggleCardSelection(c.uid)} 
+                  draggable={false}
+                  style={{ position: 'relative', cursor: c.locked ? 'not-allowed' : 'pointer' }}>
+                  {c.locked && (
+                    <div style={{
+                      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                      background: 'rgba(0,0,0,0.65)', borderRadius: '12px',
+                      display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+                      color: '#f43f5e', fontSize: '2rem', fontWeight: 'bold', zIndex: 10
+                    }}>
+                      <div>⛓️</div>
+                      <div style={{ fontSize: '0.8rem', marginTop: '5px', color: '#ffffff', letterSpacing: '0.5px' }}>사용 불가</div>
+                    </div>
+                  )}
                   <div style={{ fontSize: '1.5rem', marginBottom: '5px' }}>{c.icon}</div>
                   <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-main)' }}>{c.name}</div>
                   <div style={{ fontSize: '0.75rem', flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: '5px' }}>{c.description}</div>
