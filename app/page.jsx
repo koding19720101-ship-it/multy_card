@@ -7,6 +7,7 @@ export default function Home() {
   
   const [screen, setScreen] = useState('home');
   const [connectingMsg, setConnectingMsg] = useState('');
+  const [isConnected, setIsConnected] = useState(false);
   const [nickname, setNickname] = useState('');
   const [roomCode, setRoomCode] = useState('');
   
@@ -113,10 +114,13 @@ export default function Home() {
       setConnectingMsg('서버에 연결 중...');
     }
 
-    // 공개 MQTT 브로커 목록 (포트 443/8884 WSS - 방화벽 우회)
+    // 공개 MQTT 브로커 목록 (포트 443/8884/8081/8084 WSS - 방화벽 우회)
     const brokers = [
       'wss://broker.hivemq.com:8884/mqtt',
       'wss://broker.emqx.io:8084/mqtt',
+      'wss://mqtt.eclipseprojects.io:443/mqtt',
+      'wss://test.mosquitto.org:8081',
+      'wss://public.mqtthq.com:8084/mqtt'
     ];
 
     import('mqtt').then((mod) => {
@@ -155,6 +159,7 @@ export default function Home() {
 
         client.on('connect', () => {
           clearTimeout(timeout);
+          setIsConnected(true);
           console.log('MQTT 연결 성공:', brokers[idx]);
           client.subscribe(topic, { qos: 1 }, (err) => {
             if (err) { console.error('구독 실패:', err); return; }
@@ -187,6 +192,11 @@ export default function Home() {
         client.on('error', (err) => {
           clearTimeout(timeout);
           console.error('MQTT 오류:', err);
+        });
+
+        client.on('close', () => {
+          setIsConnected(false);
+          console.warn('MQTT 연결 끊김, 재연결 시도 중...');
         });
       };
 
@@ -710,9 +720,9 @@ export default function Home() {
     <div className="main-app" style={{ position: 'relative', width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       {/* 상단 연결 상태 표시기 */}
       <div style={{ position: 'fixed', top: '10px', right: '10px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', zIndex: 1000, background: 'rgba(255,255,255,0.9)', padding: '5px 12px', borderRadius: '20px', border: '1px solid #e5e7eb', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: mqttClientRef.current?.connected ? '#10b981' : '#f59e0b' }}></div>
-        <span style={{ color: '#374151', fontWeight: '500' }}>{mqttClientRef.current?.connected ? 'MQTT 연결됨' : myPeerId ? '대기 중...' : '연결 중...'}</span>
-        {!myPeerId && <button onClick={() => window.location.reload()} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}>재시도</button>}
+        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isConnected ? '#10b981' : '#f59e0b' }}></div>
+        <span style={{ color: '#374151', fontWeight: '500' }}>{isConnected ? '서버 연결됨' : myPeerId ? '연결 대기중...' : '연결 중...'}</span>
+        {!isConnected && <button onClick={() => window.location.reload()} style={{ padding: '2px 8px', fontSize: '0.7rem', width: 'auto', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}>새로고침</button>}
       </div>
 
       <div className={screen === 'game' ? 'game-container' : 'card'}>
