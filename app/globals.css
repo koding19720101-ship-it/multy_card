@@ -181,7 +181,7 @@ button {
     height: 100vh;
     border-radius: 0;
     border: none;
-    padding: 0.75rem;
+    padding: 0.5rem;
     box-sizing: border-box;
   }
   
@@ -200,37 +200,128 @@ button {
     font-size: 1.8rem;
   }
 
+  /* 모바일 레이아웃 재배치 (사이드바가 위로, 로그가 아래로) */
   .game-layout-inner {
-    flex-direction: column;
+    flex-direction: column-reverse;
+    gap: 0.5rem;
   }
   
   .game-sidebar {
     width: 100%;
-    flex: 1.5;
+    height: auto;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
   }
 
+  /* 사이드바 타이틀 숨기기 */
+  .game-sidebar > h2 {
+    display: none !important;
+  }
+
+  /* 플레이어 목록 가로 스크롤화 */
+  .game-sidebar > div:first-of-type {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    white-space: nowrap;
+    gap: 8px;
+    padding: 4px 2px;
+    width: 100%;
+    scrollbar-width: none;
+  }
+  .game-sidebar > div:first-of-type::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 플레이어 아이템 축소 및 가로 배치 */
+  .player-item {
+    flex: 0 0 125px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0 !important;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 70px;
+  }
+
+  .player-item > div:first-of-type {
+    flex-direction: column !important;
+    align-items: flex-start;
+  }
+
+  .hp-bar {
+    height: 5px;
+    margin-top: 4px;
+  }
+
+  /* 조작 버튼 영역 가로 배치 */
+  .game-sidebar > div:last-of-type {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+    flex-direction: row !important;
+    width: 100%;
+    gap: 0.4rem;
+  }
+
+  .game-sidebar button {
+    padding: 0.6rem !important;
+    font-size: 0.85rem !important;
+    border-radius: 10px;
+    flex: 1;
+    width: auto;
+  }
+
+  /* 로그 창 컴팩트화 */
   .game-logs {
     flex: 1;
-    padding: 0.75rem;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
+    padding: 0.6rem;
+    border-radius: 14px;
+    max-height: 30vh;
   }
 
+  /* 카드 영역 모바일 최적화 */
   .hand-container {
     padding: 10px;
     gap: 10px;
+    height: 160px;
   }
 
   .playing-card {
-    flex: 0 0 110px;
-    height: 160px;
-    padding: 10px;
+    flex: 0 0 100px;
+    height: 140px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .playing-card.selected {
+    transform: translateY(-8px);
+    border: 3px solid var(--primary);
   }
 
   .playing-card > div:nth-child(1) { /* icon */
-    font-size: 1.2rem;
+    font-size: 1.1rem;
+    margin-bottom: 2px;
+  }
+
+  .playing-card > div:nth-child(2) { /* name */
+    font-size: 0.75rem;
   }
   
   .playing-card > div:nth-child(3) { /* description */
-    font-size: 0.65rem;
+    font-size: 0.55rem;
+    line-height: 1.1;
+    margin-top: 2px;
+  }
+  
+  .playing-card > div:nth-child(4) { /* value */
+    font-size: 0.7rem;
+    padding-top: 2px;
   }
 }
