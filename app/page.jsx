@@ -60,7 +60,13 @@ export default function Home() {
     { id: 'blood_blast', name: '블러드 블라스트', type: 'attack', value: 0, description: '현재 체력의 50% 소모\n소모한 체력만큼 데미지', icon: '🩸', weight: 15 },
     { id: 'fishing_rod', name: '낚싯대', type: 'attack', value: 1, description: '1데미지\n상대 패에서 무작위 카드 1장 스틸', icon: '🎣', weight: 25 },
     { id: 'icicle', name: '고드름', type: 'attack', value: 3, description: '3데미지, 감기 부여\n10턴간 매턴 1데미지', icon: '❄️', weight: 35 },
-    { id: 'barrier', name: '배리어', type: 'defense', value: 12, description: '12방어력\n견고한 마법 방벽', icon: '💠', weight: 30 }
+    { id: 'barrier', name: '배리어', type: 'defense', value: 12, description: '12방어력\n견고한 마법 방벽', icon: '💠', weight: 30 },
+    // 새 카드 추가 2
+    { id: 'joint_responsibility', name: '연대책임', type: 'defense', value: 2, description: '방어력 2\n자신이 받은 데미지의 30%를 모두에게 준다', icon: '🔗', weight: 20 },
+    { id: 'blizzard', name: '눈보라', type: 'attack', value: 1, description: '1데미지\n모두에게 감기 10턴 부여', icon: '🌨️', isAOE: true, weight: 25 },
+    { id: 'wall', name: '벽', type: 'defense', value: 0, description: '방어력 무한\n모든 공격을 막아낸다', icon: '🧱', weight: 5 },
+    { id: 'spike_shield', name: '가시방패', type: 'defense', value: 7, description: '방어력 7\n받은 데미지의 50%를 공격자에게 반사', icon: '🦔', weight: 25 },
+    { id: 'ragged_cloak', name: '누더기 망토', type: 'defense', value: 4, description: '방어력 4\n낡고 해진 방어구', icon: '🧥', weight: 45 }
   ];
 
   const getRandomCard = () => {
@@ -361,6 +367,14 @@ export default function Home() {
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 용암에 휩쓸려 사망했습니다.`); 
           } 
         });
+      } else if (aoecard.id === 'blizzard') {
+        newState.logs.push(`🌨️ ${attacker.nickname}님이 '눈보라' 시전! 모두에게 얼음 폭풍!`);
+        newState.players.forEach(p => { 
+          if (p.id !== attackerId && p.hp > 0) { 
+            p.hp = Math.max(0, p.hp - 1); p.coldDuration = (p.coldDuration || 0) + 10; 
+            if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 얼어붙어 사망했습니다.`); 
+          } 
+        });
       }
       attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
       while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
@@ -482,11 +496,20 @@ export default function Home() {
     }
     const totalDefense = usedCards.reduce((sum, c) => sum + (c.type === 'defense' ? c.value : 0),0);
     const hasBlackHole = usedCards.some(c => c.id === 'black_hole');
+    const hasWall = usedCards.some(c => c.id === 'wall');
+    const hasSpikeShield = usedCards.some(c => c.id === 'spike_shield');
+    const hasJointResp = usedCards.some(c => c.id === 'joint_responsibility');
+    
     defender.hand = defender.hand.filter(c => !cardUids.includes(c.uid));
 
     let finalDefense = totalDefense;
-    // 죽창 효과: 방어력 50% 무시 (올림)
-    if (attack.hasBambooSpear) {
+    if (hasWall) {
+      finalDefense = 9999;
+      newState.logs.push(`🧱 거대한 벽이 모든 공격을 무한히 막아냅니다!`);
+    }
+
+    // 죽창 효과: 방어력 50% 무시 (올림) - 벽이 있으면 무시 불가
+    if (attack.hasBambooSpear && !hasWall) {
       finalDefense = Math.floor(totalDefense * 0.5);
       newState.logs.push(`🎍 죽창이 방어력을 뚫습니다! (방어력 50% 무시)`);
     }
@@ -539,6 +562,31 @@ export default function Home() {
         }
       } else if (finalDamage === 0 && attack.statusEffects && (attack.statusEffects.flash || attack.statusEffects.burn || attack.statusEffects.poison || attack.statusEffects.cold)) {
         newState.logs.push(`🛡️ ${defender.nickname}님이 완벽히 방어하여 상태이상을 무효화했습니다!`);
+      }
+
+      // 반사 및 연대책임 처리
+      if (finalDamage > 0) {
+        if (hasSpikeShield) {
+          const reflectDamage = Math.floor(finalDamage * 0.5);
+          const originalAttacker = newState.players.find(p => p.id === attack.attackerId);
+          if (originalAttacker && originalAttacker.hp > 0 && reflectDamage > 0) {
+            originalAttacker.hp = Math.max(0, originalAttacker.hp - reflectDamage);
+            newState.logs.push(`🦔 가시방패 반사! ${originalAttacker.nickname}님에게 ${reflectDamage} 피해!`);
+            if (originalAttacker.hp <= 0) newState.logs.push(`💀 ${originalAttacker.nickname}님이 자신의 공격에 반사되어 사망했습니다.`);
+          }
+        }
+        if (hasJointResp) {
+          const jointDamage = Math.floor(finalDamage * 0.3);
+          if (jointDamage > 0) {
+            newState.logs.push(`🔗 연대책임 발동! 받은 데미지의 30%(${jointDamage})를 모두에게 줍니다!`);
+            newState.players.forEach(p => {
+              if (p.id !== defenderId && p.hp > 0) {
+                p.hp = Math.max(0, p.hp - jointDamage);
+                if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 연대책임으로 사망했습니다.`);
+              }
+            });
+          }
+        }
       }
     }
     if (attack.hasDoubleEdged && finalDamage > 0) { const attacker = newState.players.find(p => p.id === attack.attackerId); if (attacker) attacker.hp = Math.max(0, attacker.hp - finalDamage); }
