@@ -153,6 +153,7 @@ export default function Home() {
           clean: true,
           connectTimeout: 8000,
           reconnectPeriod: 5000,
+          keepalive: 30,
           will: {
             topic,
             payload: JSON.stringify({ type: 'PEER_LEAVE', senderId: myId }),
@@ -163,6 +164,16 @@ export default function Home() {
         clients.push(client);
 
         client.on('connect', () => {
+          if (client === connectedClient) {
+            setIsConnected(true);
+            console.log('MQTT 재연결 성공:', brokerUrl);
+            client.subscribe(topic, { qos: 1 }, (err) => {
+              if (err) { console.error('재연결 후 구독 실패:', err); }
+              else { console.log('재연결 후 구독 성공:', topic); }
+            });
+            return;
+          }
+
           if (isDone) {
             client.end(true);
             return;
