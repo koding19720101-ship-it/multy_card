@@ -125,19 +125,24 @@ export default function Home() {
 
     import('mqtt').then((mod) => {
       const mqtt = mod.default ?? mod;
-      let brokerIdx = 0;
+      let connectedClient = null;
+      let isDone = false;
+      const clients = [];
 
-      const tryConnect = (idx) => {
-        if (idx >= brokers.length) {
-          alert('서버 연결 실패. 인터넷 상태를 확인해 주세요.');
-          return;
+      setConnectingMsg('최적의 서버를 찾는 중...');
+
+      const timeout = setTimeout(() => {
+        if (!isDone) {
+          clients.forEach(c => { try { c.end(true); } catch(e){} });
+          alert('모든 서버 연결 실패. 네트워크 방화벽을 확인해 주세요.');
+          setScreen('home');
         }
-        console.log('MQTT 연결 시도:', brokers[idx]);
-        setConnectingMsg(`서버 연결 중... (${idx + 1}/${brokers.length})`);
+      }, 15000);
 
-        if (mqttClientRef.current) { try { mqttClientRef.current.end(true); } catch(e){} }
+      if (mqttClientRef.current) { try { mqttClientRef.current.end(true); } catch(e){} }
 
-        const client = mqtt.connect(brokers[idx], {
+      brokers.forEach((brokerUrl) => {
+        const client = mqtt.connect(brokerUrl, {
           clientId: 'mcg_' + myId,
           clean: true,
           connectTimeout: 8000,
@@ -149,18 +154,24 @@ export default function Home() {
             retain: false,
           },
         });
-        mqttClientRef.current = client;
-
-        const timeout = setTimeout(() => {
-          if (client.connected) return;
-          client.end(true);
-          tryConnect(idx + 1);
-        }, 9000);
+        clients.push(client);
 
         client.on('connect', () => {
+          if (isDone) {
+            client.end(true);
+            return;
+          }
+          isDone = true;
           clearTimeout(timeout);
+          connectedClient = client;
+          mqttClientRef.current = client;
           setIsConnected(true);
-          console.log('MQTT 연결 성공:', brokers[idx]);
+          console.log('MQTT 연결 성공 (최적 서버):', brokerUrl);
+
+          clients.forEach(c => {
+            if (c !== client) { try { c.end(true); } catch(e){} }
+          });
+
           client.subscribe(topic, { qos: 1 }, (err) => {
             if (err) { console.error('구독 실패:', err); return; }
             if (!isHost) {
@@ -181,6 +192,7 @@ export default function Home() {
         });
 
         client.on('message', (t, payload) => {
+          if (client !== connectedClient) return;
           try {
             const msg = JSON.parse(payload.toString());
             if (msg.senderId === myId) return;
@@ -190,17 +202,17 @@ export default function Home() {
         });
 
         client.on('error', (err) => {
-          clearTimeout(timeout);
-          console.error('MQTT 오류:', err);
+          console.error('MQTT 오류 (' + brokerUrl + '):', err);
+          if (!isDone && client !== connectedClient) client.end(true);
         });
 
         client.on('close', () => {
-          setIsConnected(false);
-          console.warn('MQTT 연결 끊김, 재연결 시도 중...');
+          if (client === connectedClient) {
+            setIsConnected(false);
+            console.warn('MQTT 연결 끊김, 재연결 시도 중...');
+          }
         });
-      };
-
-      tryConnect(0);
+      });
     }).catch(err => {
       console.error('MQTT 로드 실패:', err);
       alert('네트워크 라이브러리 로드 실패. 페이지를 새로고침해 주세요.');
