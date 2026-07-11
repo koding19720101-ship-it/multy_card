@@ -76,6 +76,7 @@ export default function Home() {
     { id: 'sticky_bomb', name: '접착 폭탄', type: 'attack', value: 10, description: '공격 시 피해 없음, 폭탄 부착\n화상 상태 유발 시 폭발하여\n개당 10 데미지', icon: '💣', weight: 30 },
     { id: 'first_aid_kit', name: '구급 상자', type: 'heal', value: 10, description: '체력 10 회복\n선택 대상 치유', icon: '🧰', weight: 35 },
     { id: 'strange_potion', name: '이상한 물약', type: 'potion', value: 0, description: '사용 시 대상에게 무작위 효과\n(모든 상태이상 중 하나 또는\n체력 15 회복)', icon: '🧪', weight: 25 },
+    { id: 'dice', name: '주사위', type: 'attack', value: 0, description: '굴려진 주사위 눈금\n(1~6)만큼 무작위 공격력', icon: '🎲', weight: 40 },
     { id: 'chain', name: '사슬', type: 'attack', value: 2, description: '2데미지, 무작위 카드 1장\n사슬로 1턴간 사용불가', icon: '⛓️', weight: 25 }
   ];
 
@@ -517,7 +518,14 @@ export default function Home() {
     const target = newState.players.find(p => p.id === finalTargetId);
     if (!target) return;
     
-    let totalDamage = usedCards.reduce((sum, c) => sum + (c.type === 'attack' ? c.value : 0), 0);
+    let totalDamage = usedCards.reduce((sum, c) => {
+      if (c.id === 'dice') {
+        const roll = Math.floor(Math.random() * 6) + 1;
+        newState.logs.push(`🎲 주사위 굴리기! 눈금 [${roll}]이 나왔습니다.`);
+        return sum + roll;
+      }
+      return sum + (c.type === 'attack' ? c.value : 0);
+    }, 0);
     
     const crasherCount = usedCards.filter(c => c.id === 'crasher').length;
     if (crasherCount > 0) {
