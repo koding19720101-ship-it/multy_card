@@ -72,6 +72,7 @@ export default function Home() {
     { id: 'confiscation', name: '몰수', type: 'attack', value: 0, description: '대상 플레이어의\n모든 카드를 강탈함', icon: '📜', weight: 10 },
     { id: 'crasher', name: '크래셔', type: 'attack', value: 9, description: '기본 9데미지\n체력이 낮을수록 피해 증가', icon: '🪓', weight: 20 },
     { id: 'katana', name: '카타나', type: 'attack', value: 9, description: '적에게 날카롭고 신속한\n9데미지를 입힙니다', icon: '⚔️', weight: 30 },
+    { id: 'sun', name: '태양', type: 'attack', value: 0, description: '자신 제외 모두에게\n화상 5턴 + 섬광 3턴 부여', icon: '☀️', isAOE: true, weight: 10 },
     { id: 'chain', name: '사슬', type: 'attack', value: 2, description: '2데미지, 무작위 카드 1장\n사슬로 1턴간 사용불가', icon: '⛓️', weight: 25 }
   ];
 
@@ -390,6 +391,15 @@ export default function Home() {
           if (p.id !== attackerId && p.hp > 0) { 
             p.hp = Math.max(0, p.hp - 1); p.coldDuration = (p.coldDuration || 0) + 10; 
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 얼어붙어 사망했습니다.`); 
+          } 
+        });
+      } else if (aoecard.id === 'sun') {
+        newState.logs.push(`☀️ ${attacker.nickname}님이 '태양' 시전! 모두에게 뜨거운 열기!`);
+        newState.players.forEach(p => { 
+          if (p.id !== attackerId && p.hp > 0) { 
+            p.burnDuration = (p.burnDuration || 0) + 5;
+            p.flashDuration = (p.flashDuration || 0) + 3;
+            newState.logs.push(`🔥 ${p.nickname}님이 화상(5턴)과 섬광(3턴) 상태가 되었습니다.`);
           } 
         });
       } else if (aoecard.id === 'tax_collection') {
