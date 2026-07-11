@@ -73,6 +73,7 @@ export default function Home() {
     { id: 'crasher', name: '크래셔', type: 'attack', value: 9, description: '기본 9데미지\n체력이 낮을수록 피해 증가', icon: '🪓', weight: 20 },
     { id: 'katana', name: '카타나', type: 'attack', value: 9, description: '적에게 날카롭고 신속한\n9데미지를 입힙니다', icon: '⚔️', weight: 30 },
     { id: 'sun', name: '태양', type: 'attack', value: 0, description: '자신 제외 모두에게\n화상 5턴 + 섬광 3턴 부여', icon: '☀️', isAOE: true, weight: 10 },
+    { id: 'sticky_bomb', name: '접착 폭탄', type: 'attack', value: 10, description: '공격 시 피해 없음, 폭탄 부착\n화상 상태 유발 시 폭발하여\n개당 10 데미지', icon: '💣', weight: 30 },
     { id: 'chain', name: '사슬', type: 'attack', value: 2, description: '2데미지, 무작위 카드 1장\n사슬로 1턴간 사용불가', icon: '⛓️', weight: 25 }
   ];
 
@@ -382,6 +383,12 @@ export default function Home() {
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
             p.hp = Math.max(0, p.hp - 5); p.burnDuration = (p.burnDuration || 0) + 5; 
+            if (p.stickyBombCount > 0) {
+              const bombDamage = p.stickyBombCount * 10;
+              p.hp = Math.max(0, p.hp - bombDamage);
+              newState.logs.push(`💥 폭탄 반응! ${p.nickname}님에게 붙어있던 폭탄 ${p.stickyBombCount}개가 폭발하여 ${bombDamage} 데미지를 줍니다!`);
+              p.stickyBombCount = 0;
+            }
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 용암에 휩쓸려 사망했습니다.`); 
           } 
         });
@@ -400,6 +407,13 @@ export default function Home() {
             p.burnDuration = (p.burnDuration || 0) + 5;
             p.flashDuration = (p.flashDuration || 0) + 3;
             newState.logs.push(`🔥 ${p.nickname}님이 화상(5턴)과 섬광(3턴) 상태가 되었습니다.`);
+            if (p.stickyBombCount > 0) {
+              const bombDamage = p.stickyBombCount * 10;
+              p.hp = Math.max(0, p.hp - bombDamage);
+              newState.logs.push(`💥 폭탄 반응! ${p.nickname}님에게 붙어있던 폭탄 ${p.stickyBombCount}개가 폭발하여 ${bombDamage} 데미지를 줍니다!`);
+              p.stickyBombCount = 0;
+            }
+            if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`);
           } 
         });
       } else if (aoecard.id === 'tax_collection') {
@@ -480,6 +494,15 @@ export default function Home() {
     if (berserkCount > 0) {
       totalDamage = Math.floor(totalDamage * Math.pow(1.2, berserkCount));
       newState.logs.push(`😡 ${attacker.nickname}님이 광폭화 ${berserkCount}장 사용! 데미지가 증가합니다.`);
+    }
+
+    // 접착 폭탄 카드 처리
+    const stickyBombCount = usedCards.filter(c => c.id === 'sticky_bomb').length;
+    if (stickyBombCount > 0) {
+      // 접착 폭탄이 포함된 공격은 기본 데미지가 0이 됨 (혹은 접착 폭탄 자체 데미지가 0이 되고, 다른 카드의 데미지도 무효화하는가? "공격 시 데미지를 주지 않으며 폭탄이 붙음 상태가 됨" -> 공격 데미지를 0으로 처리)
+      totalDamage = 0;
+      target.stickyBombCount = (target.stickyBombCount || 0) + stickyBombCount;
+      newState.logs.push(`💣 ${attacker.nickname}님이 ${target.nickname}님에게 접착 폭탄 ${stickyBombCount}개를 붙였습니다! (현재 붙어있는 폭탄: ${target.stickyBombCount}개)`);
     }
 
     attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
@@ -628,6 +651,14 @@ export default function Home() {
           } else {
             newState.logs.push(`🔥 ${defender.nickname}님의 화상 지속시간이 5턴 증가했습니다! (현재 남은 지속: ${defender.burnDuration}턴)`);
           }
+          // 폭탄이 붙어 있는 상태에서 화상을 입을 시 폭발
+          if (defender.stickyBombCount > 0) {
+            const bombDamage = defender.stickyBombCount * 10;
+            defender.hp = Math.max(0, defender.hp - bombDamage);
+            newState.logs.push(`💥 폭탄 반응! ${defender.nickname}님에게 붙어있던 폭탄 ${defender.stickyBombCount}개가 폭발하여 ${bombDamage} 데미지를 줍니다!`);
+            defender.stickyBombCount = 0;
+            if (defender.hp <= 0) newState.logs.push(`💀 ${defender.nickname}님이 폭탄 폭발로 사망했습니다.`);
+          }
         }
         if (attack.statusEffects.poison) {
           const old = defender.poisonDuration || 0;
@@ -733,8 +764,14 @@ export default function Home() {
       currentPlayer.hp = Math.max(0, currentPlayer.hp - 2);
       currentPlayer.burnDuration -= 1;
       state.logs.push(`🔥 ${currentPlayer.nickname}님이 화상으로 2데미지를 입었습니다. (남은 지속: ${currentPlayer.burnDuration}턴)`);
+      if (currentPlayer.stickyBombCount > 0) {
+        const bombDamage = currentPlayer.stickyBombCount * 10;
+        currentPlayer.hp = Math.max(0, currentPlayer.hp - bombDamage);
+        state.logs.push(`💥 폭탄 반응! 화상 피해로 인해 ${currentPlayer.nickname}님에게 붙어있던 폭탄 ${currentPlayer.stickyBombCount}개가 폭발하여 ${bombDamage} 데미지를 줍니다!`);
+        currentPlayer.stickyBombCount = 0;
+      }
       if (currentPlayer.hp <= 0) {
-        state.logs.push(`💀 ${currentPlayer.nickname}님이 화상으로 사망하셨습니다.`);
+        state.logs.push(`💀 ${currentPlayer.nickname}님이 사망하셨습니다.`);
       } else if (currentPlayer.burnDuration <= 0) {
         state.logs.push(`🔥 ${currentPlayer.nickname}님의 화상이 치유되었습니다.`);
       }
@@ -955,6 +992,7 @@ export default function Home() {
                         {p.burnDuration > 0 && <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>🔥 화상 ({p.burnDuration})</div>}
                         {p.poisonDuration > 0 && <div style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 'bold' }}>🐍 독 ({p.poisonDuration})</div>}
                         {p.coldDuration > 0 && <div style={{ fontSize: '0.7rem', color: '#0ea5e9', fontWeight: 'bold' }}>❄️ 감기 ({p.coldDuration})</div>}
+                        {p.stickyBombCount > 0 && <div style={{ fontSize: '0.7rem', color: '#db2777', fontWeight: 'bold' }}>💣 폭탄이 붙음 x{p.stickyBombCount}</div>}
                         <div className="hp-bar"><div className={`hp-fill ${p.hp < 30 ? 'low' : ''}`} style={{ width: `${p.hp}%` }}></div></div>
                       </div>
                     );
