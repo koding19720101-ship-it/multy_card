@@ -424,6 +424,8 @@ export default function Home() {
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
             p.hp = Math.max(0, p.hp - 5); p.shockDuration = (p.shockDuration || 0) + aliveOtherPlayersCount;
+            p.lastDamage = 5;
+            p.shakeTrigger = Math.random();
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 사망하셨습니다.`); 
           } 
         });
@@ -431,13 +433,17 @@ export default function Home() {
         newState.logs.push(`🌋 ${attacker.nickname}님이 '화산' 폭발 시전! 모두에게 공격!`);
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
+            let dmg = 5;
             p.hp = Math.max(0, p.hp - 5); p.burnDuration = (p.burnDuration || 0) + 5; 
             if (p.stickyBombCount > 0) {
               const bombDamage = p.stickyBombCount * 10;
               p.hp = Math.max(0, p.hp - bombDamage);
+              dmg += bombDamage;
               newState.logs.push(`💥 폭탄 반응! ${p.nickname}님에게 붙어있던 폭탄 ${p.stickyBombCount}개가 폭발하여 ${bombDamage} 데미지를 줍니다!`);
               p.stickyBombCount = 0;
             }
+            p.lastDamage = dmg;
+            p.shakeTrigger = Math.random();
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 용암에 휩쓸려 사망했습니다.`); 
           } 
         });
@@ -446,6 +452,8 @@ export default function Home() {
         newState.players.forEach(p => { 
           if (p.id !== attackerId && p.hp > 0) { 
             p.hp = Math.max(0, p.hp - 1); p.coldDuration = (p.coldDuration || 0) + 10; 
+            p.lastDamage = 1;
+            p.shakeTrigger = Math.random();
             if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 얼어붙어 사망했습니다.`); 
           } 
         });
@@ -459,6 +467,8 @@ export default function Home() {
             if (p.stickyBombCount > 0) {
               const bombDamage = p.stickyBombCount * 10;
               p.hp = Math.max(0, p.hp - bombDamage);
+              p.lastDamage = bombDamage;
+              p.shakeTrigger = Math.random();
               newState.logs.push(`💥 폭탄 반응! ${p.nickname}님에게 붙어있던 폭탄 ${p.stickyBombCount}개가 폭발하여 ${bombDamage} 데미지를 줍니다!`);
               p.stickyBombCount = 0;
             }
@@ -686,7 +696,12 @@ export default function Home() {
       newState.players.forEach(p => { if (p.hp > 0) { p.hp = Math.max(0, p.hp - 75); p.hand = Array.from({ length: 10 }, getRandomCard); if (p.hp <= 0) newState.logs.push(`💀 ${p.nickname}님이 블랙홀에 휩쓸려 사망했습니다.`); } });
       finalDamage = 0; 
     } else { 
-      defender.hp = Math.max(0, defender.hp - finalDamage); 
+      // 피해를 입었을 때 흔들림 애니메이션과 데미지 표시 플로팅 상태 추가
+      if (finalDamage > 0) {
+        defender.hp = Math.max(0, defender.hp - finalDamage); 
+        defender.lastDamage = finalDamage;
+        defender.shakeTrigger = Math.random(); // 고유 식별자로 애니메이션 재트리거
+      }
       newState.logs.push(`${defender.nickname} 🛡️ 방어 ${finalDefense}. 피해 ${finalDamage}.`); 
       
       if (finalDamage > 0 && attack.statusEffects) {
@@ -1032,14 +1047,19 @@ export default function Home() {
               <div className="game-sidebar">
                 <h2 style={{ fontSize: '1.2rem', marginBottom: '1rem', flexShrink: 0 }}>MULTY-CARD 현황</h2>
                 <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingRight: '5px' }}>
-                  {gameState.players.map(p => {
+                   {gameState.players.map(p => {
                     const isSelected = targetPlayerId === p.id;
                     const canSelect = (gameState.phase === 'main' && isMyTurn) || (gameState.phase === 'defense' && isTarget && isOrbitShiftSelected);
                     return (
                       <div key={p.id} className={`player-item ${isSelected ? 'target-selected' : ''}`} 
                         onClick={() => canSelect && p.hp > 0 && setTargetPlayerId(p.id)} 
                         style={{ opacity: p.hp <= 0 ? 0.4 : 1, position: 'relative' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        {p.lastDamage && (
+                          <div key={p.shakeTrigger} className="damage-text">
+                            -{p.lastDamage}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }} className={p.shakeTrigger ? 'shake-animation' : ''} key={p.shakeTrigger}>
                           <span style={{ fontWeight: 'bold' }}>{p.nickname} {p.id === myPeerId ? '(나)' : ''}</span>
                           <span>{p.hp} HP</span>
                         </div>
