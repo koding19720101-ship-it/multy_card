@@ -74,6 +74,8 @@ export default function Home() {
     { id: 'katana', name: '카타나', type: 'attack', value: 9, description: '적에게 날카롭고 신속한\n9데미지를 입힙니다', icon: '⚔️', weight: 30 },
     { id: 'sun', name: '태양', type: 'attack', value: 0, description: '자신 제외 모두에게\n화상 5턴 + 섬광 3턴 부여', icon: '☀️', isAOE: true, weight: 10 },
     { id: 'sticky_bomb', name: '접착 폭탄', type: 'attack', value: 10, description: '공격 시 피해 없음, 폭탄 부착\n화상 상태 유발 시 폭발하여\n개당 10 데미지', icon: '💣', weight: 30 },
+    { id: 'first_aid_kit', name: '구급 상자', type: 'heal', value: 10, description: '체력 10 회복\n선택 대상 치유', icon: '🧰', weight: 35 },
+    { id: 'strange_potion', name: '이상한 물약', type: 'potion', value: 0, description: '사용 시 대상에게 무작위 효과\n(모든 상태이상 중 하나 또는\n체력 15 회복)', icon: '🧪', weight: 25 },
     { id: 'chain', name: '사슬', type: 'attack', value: 2, description: '2데미지, 무작위 카드 1장\n사슬로 1턴간 사용불가', icon: '⛓️', weight: 25 }
   ];
 
@@ -340,7 +342,7 @@ export default function Home() {
 
     const usedCards = attacker.hand.filter(c => cardUids.includes(c.uid));
     
-    // 힐 처리 (붕대)
+    // 힐 처리 (붕대, 구급 상자)
     const healCards = usedCards.filter(c => c.type === 'heal');
     if (healCards.length > 0) {
       const target = newState.players.find(p => p.id === targetId);
@@ -348,6 +350,52 @@ export default function Home() {
         const totalHeal = healCards.reduce((sum, c) => sum + c.value, 0);
         target.hp = Math.min(100, target.hp + totalHeal);
         newState.logs.push(`🩹 ${attacker.nickname}님이 ${target.nickname}님을 치유! +${totalHeal} HP.`);
+        attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
+        while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
+        nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
+        return;
+      }
+    }
+
+    // 이상한 물약 처리
+    const strangePotionCard = usedCards.find(c => c.id === 'strange_potion');
+    if (strangePotionCard) {
+      const target = newState.players.find(p => p.id === targetId);
+      if (target) {
+        const effects = ['heal', 'shock', 'flash', 'burn', 'poison', 'cold'];
+        const chosenEffect = effects[Math.floor(Math.random() * effects.length)];
+        newState.logs.push(`🧪 ${attacker.nickname}님이 ${target.nickname}님에게 '이상한 물약'을 투척했습니다!`);
+        
+        if (chosenEffect === 'heal') {
+          target.hp = Math.min(100, target.hp + 15);
+          newState.logs.push(`🧪 물약 효과: 회복 효과 발생! ${target.nickname}님의 체력이 15 회복되었습니다.`);
+        } else if (chosenEffect === 'shock') {
+          // 감전 부여 (여기서는 기본적으로 감전 지속시간을 2로 부여해봅니다. 다른 플레이어 수만큼 부여하거나 임의의 값 설정)
+          target.shockDuration = (target.shockDuration || 0) + 2;
+          newState.logs.push(`⚡ 물약 효과: 감전 발생! ${target.nickname}님이 감전되었습니다. (지속: 2턴)`);
+        } else if (chosenEffect === 'flash') {
+          target.flashDuration = (target.flashDuration || 0) + 3;
+          newState.logs.push(`✨ 물약 효과: 섬광 발생! ${target.nickname}님이 섬광 상태가 되었습니다. (지속: 3턴)`);
+        } else if (chosenEffect === 'burn') {
+          target.burnDuration = (target.burnDuration || 0) + 5;
+          newState.logs.push(`🔥 물약 효과: 화상 발생! ${target.nickname}님이 화상 상태가 되었습니다. (지속: 5턴)`);
+          
+          // 만약 붙어있는 접착 폭탄이 있다면 폭발 처리
+          if (target.stickyBombCount > 0) {
+            const bombDamage = target.stickyBombCount * 10;
+            target.hp = Math.max(0, target.hp - bombDamage);
+            newState.logs.push(`💥 폭탄 반응! 화상으로 인해 ${target.nickname}님에게 붙어있던 폭탄 ${target.stickyBombCount}개가 폭발하여 ${bombDamage} 데미지를 줍니다!`);
+            target.stickyBombCount = 0;
+            if (target.hp <= 0) newState.logs.push(`💀 ${target.nickname}님이 폭탄 폭발로 사망했습니다.`);
+          }
+        } else if (chosenEffect === 'poison') {
+          target.poisonDuration = (target.poisonDuration || 0) + 7;
+          newState.logs.push(`🐍 물약 효과: 독 발생! ${target.nickname}님이 중독되었습니다. (지속: 7턴)`);
+        } else if (chosenEffect === 'cold') {
+          target.coldDuration = (target.coldDuration || 0) + 10;
+          newState.logs.push(`❄️ 물약 효과: 감기 발생! ${target.nickname}님이 감기에 걸렸습니다. (지속: 10턴)`);
+        }
+
         attacker.hand = attacker.hand.filter(c => !cardUids.includes(c.uid));
         while (attacker.hand.length < 10) attacker.hand.push(getRandomCard());
         nextTurn(newState); setGameState(newState); broadcast({ type: 'GAME_STATE_UPDATE', gameState: newState });
